@@ -104,8 +104,8 @@ def pls_variable_selection(X, y, max_comp, transcript):
     print("Wavelengths to be discarded ",mseminy[0])
     print('Optimized MSEP ', mse[mseminx,mseminy][0])
     stdout.write("\n")
-    plt.imshow(mse, interpolation=None)
-    plt.savefig(os.path.join(plot_out_dir, f'{transcript}_mse_plot.png'), transparent=True)
+    # plt.imshow(mse, interpolation=None)
+    # plt.savefig(os.path.join(plot_out_dir, f'{transcript}_mse_plot.png'), transparent=True)
     # plt.show()
  
     # Calculate PLS with optimal components and export values
@@ -204,7 +204,7 @@ def run_variable_selection(df, transcript):
         plt.plot(wl, np.abs(pls.coef_[:,0]))
         plt.xlabel('Wavelength (nm)')
         plt.ylabel('Absolute value of PLS coefficients')
-        plt.savefig(os.path.join(plot_out_dir, f'{transcript}_absolute_value_pls_coeff.png'), transparent=True)
+        plt.savefig(os.path.join(plot_out_dir, f'{transcript}_first_derivative_absolute_value_pls_coeff.png'), transparent=True)
         # plt.show()
 
     # Get the list of indices that sorts the PLS coefficients in ascending order of the absolute value
