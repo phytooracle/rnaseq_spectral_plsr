@@ -19,6 +19,7 @@ from sklearn.cross_decomposition import PLSRegression
 from sklearn.model_selection import cross_val_predict
 from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.utils import shuffle
+from sklearn.model_selection import train_test_split
 import matplotlib.collections as collections
 import warnings
 warnings.filterwarnings("ignore")
@@ -120,23 +121,27 @@ def pls_variable_selection(X, y, max_comp, transcript):
 
 
 # --------------------------------------------------
-def simple_pls_cv(X, y, n_comp, transcript):
- 
+def simple_pls_cv(X, y, n_comp, transcript, rng=123):
+    
+    X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=rng)
+    
     # Run PLS with suggested number of components
     pls = PLSRegression(n_components=n_comp)
-    pls.fit(X, y)
-    y_c = pls.predict(X)
+    pls.fit(X_train, y_train)
+#     y_c = pls.predict(X)
  
     # Cross-validation
-    y_cv = cross_val_predict(pls, X, y, cv=10)    
+#     y_cv = cross_val_predict(pls, X, y, cv=10)    
  
     # Calculate scores for calibration and cross-validation
-    score_c = r2_score(y, y_c)
-    score_cv = r2_score(y, y_cv)
+#     score_c = r2_score(y, y_c)
+#     score_cv = r2_score(y, y_cv)
+    score_c = pls.score(X_train, y_train)
+    score_cv = pls.score(X_test, y_test)
  
     # Calculate mean square error for calibration and cross validation
-    mse_c = mean_squared_error(y, y_c)
-    mse_cv = mean_squared_error(y, y_cv)
+    mse_c = mean_squared_error(y_train, pls.predict(X_train))
+    mse_cv = mean_squared_error(y_test, pls.predict(X_test))
  
     print('R2 calib: %5.3f'  % score_c)
     print('R2 CV: %5.3f'  % score_cv)
@@ -156,12 +161,12 @@ def simple_pls_cv(X, y, n_comp, transcript):
     res_df.index.name = 'transcript'
  
     # Plot regression 
-    z = np.polyfit(y, y_cv, 1)
+    z = np.polyfit(y_test, pls.predict(X_test), 1)
     with plt.style.context(('ggplot')):
         fig, ax = plt.subplots(figsize=(9, 5))
-        ax.scatter(y_cv, y, c='red', edgecolors='k')
+        ax.scatter(pls.predict(X_test), y_test, c='red', edgecolors='k')
         ax.plot(z[1]+z[0]*y, y, c='blue', linewidth=1)
-        ax.plot(y, y, color='green', linewidth=1)
+        ax.plot(y, y, color='green', linewidth=1, linestyle='dashed')
         plt.title('$R^{2}$ (CV): '+str(score_cv))
         plt.xlabel('Predicted')
         plt.ylabel('Measured')
@@ -218,6 +223,8 @@ def run_variable_selection(df, transcript):
 
     # Variable selection PLSR
     opt_Xc, ncomp, wav, sorted_ind = pls_variable_selection(X1, y, 15, transcript=transcript)
+    print(opt_Xc)
+    print(sorted_ind)
     res_df = simple_pls_cv(opt_Xc, y, ncomp, transcript=transcript)
     out_file = os.path.join(csv_out_dir, '_'.join([transcript, 'correlation_score.csv']))
     res_df.to_csv(out_file)
@@ -225,10 +232,8 @@ def run_variable_selection(df, transcript):
 
     # Visualize discarded bands
     ix = np.in1d(wl.ravel(), wl[sorted_ind][:wav])
-
-
-
-
+    print(ix)
+    
     # Plot spectra with superimpose selected bands
     fig, ax = plt.subplots(figsize=(8,9))
     with plt.style.context(('ggplot')):
@@ -241,6 +246,10 @@ def run_variable_selection(df, transcript):
     ax.add_collection(collection)
     plt.savefig(os.path.join(plot_out_dir, f'{transcript}_variable_selection.png'), transparent=True)
     # plt.show()
+    
+    used_wavelengths = pd.DataFrame([wl, ix]).T.rename(columns={0: 'wavelength', 1: 'removed'})
+    out_file = os.path.join(csv_out_dir, '_'.join([transcript, 'selected_wavelengths.csv']))
+    used_wavelengths.to_csv(out_file, index=False)
     print(f'Done processing transcript: {transcript}')
     print('#----------------------------------------------------------------------------')
 
