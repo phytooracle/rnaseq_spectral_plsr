@@ -6,6 +6,7 @@ Purpose: Partial least squares regression (PLSR) on gene expression (response va
 """
 
 import argparse
+from math import perm
 import os 
 import sys
 from sys import stdout
@@ -21,6 +22,8 @@ from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.utils import shuffle
 from sklearn.model_selection import train_test_split
 import matplotlib.collections as collections
+import multiprocessing
+import itertools
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -60,6 +63,13 @@ def get_args():
                         metavar='str',
                         type=str,
                         default='plsr_outputs')
+
+    parser.add_argument('-t',
+                        '--test_size',
+                        help='Test size for train/test split.',
+                        metavar='float',
+                        type=float,
+                        default=0.25)
 
     return parser.parse_args()
 
@@ -120,40 +130,73 @@ def pls_variable_selection(X, y, max_comp, transcript):
     return(Xc[:,mseminy[0]:],mseminx[0]+1,mseminy[0], sorted_ind)
 
 
+def func(args):
+    i, x_to_permute, n_comp = args
+    np.random.seed(i + x_to_permute*1000)
+
+    # permute x_train for feature x_to_permute
+    perm_idx = np.random.choice(len(X_train), len(X_train), False)
+    x_train_p = X_train.copy()
+    x_train_p[:, x_to_permute] = x_train_p[perm_idx, x_to_permute]
+
+    # bts_est = ExtraTreesClassifier()
+    # bts_est.fit(x_train_p, y_train.ravel())
+    pls = PLSRegression(n_components=n_comp)
+    pls.fit(x_train_p, y_train)
+
+    # permute x_val for feature x_to_permute
+    perm_idx = np.random.choice(len(X_test), len(X_test), False)
+    x_val_p = X_test.copy()
+    x_val_p[:, x_to_permute] = x_val_p[perm_idx, x_to_permute]
+
+    score = pls.score(x_val_p, y_test)
+
+    return score
+
+
+def get_scores_of_permuted_features(X_train, n_comp):
+    scores_permuted = []
+    cpu_count = os.cpu_count()
+
+    for x_to_permute in range(X_train.shape[1]):
+        score = multiprocessing.Pool(cpu_count).map(func, itertools.product(range(99), [x_to_permute], [n_comp] * 99))
+        scores_permuted.append(score)
+    return np.array(scores_permuted).T
+
+
 # --------------------------------------------------
-def simple_pls_cv(X, y, n_comp, transcript, rng=123):
-    
-    X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=rng)
+def simple_pls_cv(X, y, n_comp, transcript, rng=123, permutation=False):
+
+    args = get_args()
+    global X_train, X_test, y_train, y_test
+    X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=rng, test_size=args.test_size)
     
     # Run PLS with suggested number of components
     pls = PLSRegression(n_components=n_comp)
     pls.fit(X_train, y_train)
-#     y_c = pls.predict(X)
- 
-    # Cross-validation
-#     y_cv = cross_val_predict(pls, X, y, cv=10)    
- 
-    # Calculate scores for calibration and cross-validation
-#     score_c = r2_score(y, y_c)
-#     score_cv = r2_score(y, y_cv)
-    score_c = pls.score(X_train, y_train)
-    score_cv = pls.score(X_test, y_test)
+    # Calculate scores for train calibration and test
+    score_train = pls.score(X_train, y_train)
+    score_test = pls.score(X_test, y_test)
  
     # Calculate mean square error for calibration and cross validation
-    mse_c = mean_squared_error(y_train, pls.predict(X_train))
-    mse_cv = mean_squared_error(y_test, pls.predict(X_test))
+    mse_train = mean_squared_error(y_train, pls.predict(X_train))
+    mse_test = mean_squared_error(y_test, pls.predict(X_test))
+
+    if permutation:
+        scores_permuted = get_scores_of_permuted_features(X_train, n_comp)
+        print(scores_permuted)
  
-    print('R2 calib: %5.3f'  % score_c)
-    print('R2 CV: %5.3f'  % score_cv)
-    print('MSE calib: %5.3f' % mse_c)
-    print('MSE CV: %5.3f' % mse_cv)
+    print('R2 calib: %5.3f'  % score_train)
+    print('R2 CV: %5.3f'  % score_test)
+    print('MSE calib: %5.3f' % mse_train)
+    print('MSE CV: %5.3f' % mse_test)
     res_dict = {}
     
     res_dict[transcript] = {
-        'calibration_score': score_c, 
-        'cross_validation_score': score_cv,
-        'calibration_mse': mse_c, 
-        'cross_validation_mse': mse_cv,
+        'score_train': score_train, 
+        'score_test': score_test,
+        'mse_train': mse_train, 
+        'mse_test': mse_test,
         'number_components': n_comp
     }
     
@@ -167,7 +210,7 @@ def simple_pls_cv(X, y, n_comp, transcript, rng=123):
         ax.scatter(pls.predict(X_test), y_test, c='red', edgecolors='k')
         ax.plot(z[1]+z[0]*y, y, c='blue', linewidth=1)
         ax.plot(y, y, color='green', linewidth=1, linestyle='dashed')
-        plt.title('$R^{2}$ (CV): '+str(score_cv))
+        plt.title('$R^{2}$ (CV): '+str(score_test))
         plt.xlabel('Predicted')
         plt.ylabel('Measured')
         plt.savefig(os.path.join(plot_out_dir, f'{transcript}_simple_pls_{n_comp}.png'), transparent=True)
@@ -223,9 +266,13 @@ def run_variable_selection(df, transcript):
 
     # Variable selection PLSR
     opt_Xc, ncomp, wav, sorted_ind = pls_variable_selection(X1, y, 15, transcript=transcript)
+
+    # global n_comp 
+    # n_comp = ncomp
+
     print(opt_Xc)
     print(sorted_ind)
-    res_df = simple_pls_cv(opt_Xc, y, ncomp, transcript=transcript)
+    res_df = simple_pls_cv(opt_Xc, y, ncomp, transcript=transcript, permutation=True)
     out_file = os.path.join(csv_out_dir, '_'.join([transcript, 'correlation_score.csv']))
     res_df.to_csv(out_file)
 
