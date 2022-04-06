@@ -20,7 +20,7 @@ from sklearn.cross_decomposition import PLSRegression
 from sklearn.model_selection import cross_val_predict
 from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.utils import shuffle
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, StratifiedKFold, permutation_test_score
 import matplotlib.collections as collections
 import multiprocessing
 import itertools
@@ -159,7 +159,7 @@ def get_scores_of_permuted_features(X_train, n_comp):
     cpu_count = os.cpu_count()
 
     for x_to_permute in range(X_train.shape[1]):
-        score = multiprocessing.Pool(cpu_count).map(func, itertools.product(range(99), [x_to_permute], [n_comp] * 99))
+        score = multiprocessing.Pool(cpu_count).map(func, itertools.product(range(99), [x_to_permute], [n_comp] * 50))
         scores_permuted.append(score)
     return np.array(scores_permuted).T
 
@@ -183,8 +183,24 @@ def simple_pls_cv(X, y, n_comp, transcript, rng=123, permutation=False):
     mse_test = mean_squared_error(y_test, pls.predict(X_test))
 
     if permutation:
-        scores_permuted = get_scores_of_permuted_features(X_train, n_comp)
-        print(scores_permuted)
+        print('Running permutation test')
+        n_uncorrelated_features = X.shape[1]
+        rng = np.random.RandomState(seed=0)
+        # Use same number of samples as in iris and 20 features
+        X_rand = rng.normal(size=(X.shape[0], n_uncorrelated_features))
+        cv = StratifiedKFold(2, shuffle=True, random_state=0)
+
+        score_real, perm_scores_iris, pvalue_iris = permutation_test_score(
+            pls, X, y, scoring="accuracy", cv=cv, n_permutations=1000
+        )
+
+        score_rand, perm_scores_rand, pvalue_rand = permutation_test_score(
+            pls, X_rand, y, scoring="accuracy", cv=cv, n_permutations=1000
+        )
+        print(score_rand, perm_scores_rand, pvalue_rand)
+        
+        # scores_permuted = get_scores_of_permuted_features(X_train, n_comp)
+        # print(scores_permuted)
  
     print('R2 calib: %5.3f'  % score_train)
     print('R2 CV: %5.3f'  % score_test)
@@ -266,12 +282,6 @@ def run_variable_selection(df, transcript):
 
     # Variable selection PLSR
     opt_Xc, ncomp, wav, sorted_ind = pls_variable_selection(X1, y, 15, transcript=transcript)
-
-    # global n_comp 
-    # n_comp = ncomp
-
-    print(opt_Xc)
-    print(sorted_ind)
     res_df = simple_pls_cv(opt_Xc, y, ncomp, transcript=transcript, permutation=True)
     out_file = os.path.join(csv_out_dir, '_'.join([transcript, 'correlation_score.csv']))
     res_df.to_csv(out_file)
@@ -279,8 +289,7 @@ def run_variable_selection(df, transcript):
 
     # Visualize discarded bands
     ix = np.in1d(wl.ravel(), wl[sorted_ind][:wav])
-    print(ix)
-    
+
     # Plot spectra with superimpose selected bands
     fig, ax = plt.subplots(figsize=(8,9))
     with plt.style.context(('ggplot')):
