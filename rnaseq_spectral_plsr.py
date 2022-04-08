@@ -178,11 +178,20 @@ def simple_pls_cv(X, y, n_comp, transcript, rng=123, trained_model=None):#, perm
 
     args = get_args()
     if trained_model:
-        print('Trained model')
+        print('Loading saved model.')
+        score_list = []
         filename = os.path.join(model_out_dir, '_'.join([transcript, 'model.sav']))
         pls = pickle.load(open(filename, 'rb'))
-        result = pls.score(X, y)
-        print(result)
+        for i in range(0,1000):
+            rng = np.random.default_rng()
+            X_perm = rng.permutation(X, axis=1)
+            print(X_perm)
+            result = pls.score(X_perm, y)
+            print(result)
+            score_list.append(result)
+
+        res_df = pd.DataFrame(score_list, columns=['score_permutation'])
+        print(res_df)
 
     else:
         # Split data into train & test datasets
@@ -235,7 +244,7 @@ def simple_pls_cv(X, y, n_comp, transcript, rng=123, trained_model=None):#, perm
             plt.savefig(os.path.join(plot_out_dir, f'{transcript}_simple_pls_{n_comp}.png'), transparent=True)
             # plt.show()
 
-        return res_df, pls
+    return res_df, pls
 
 
 # --------------------------------------------------
@@ -307,8 +316,10 @@ def run_variable_selection(df, transcript):
     
     # Save wavelength (used & removed)
     used_wavelengths = pd.DataFrame([wl, ix]).T.rename(columns={0: 'wavelength', 1: 'removed'})
+    used_wavelengths['transcript'] = transcript
+    used_wavelengths = used_wavelengths.set_index('transcript')
     out_file = os.path.join(csv_out_dir, '_'.join([transcript, 'selected_wavelengths.csv']))
-    used_wavelengths.to_csv(out_file, index=False)
+    used_wavelengths.to_csv(out_file)
     
     # Save PLSR model 
     filename = os.path.join(model_out_dir, '_'.join([transcript, 'model.sav']))
@@ -324,10 +335,8 @@ def run_variable_selection_permutation(df, transcript):
     # Collect response (RNAseq TPM) and explanatory variables (spectra) for a single transcript
     print(f'Processing transcript: {transcript}')
     y = df[transcript].values
-    print(y)
     X = df[[str(i) for i in range(350, 2501)]]
     rng = np.random.default_rng()
-    X = rng.permutation(X, axis=1)
     # X = rng.permutation(X, axis=1)
     # X = np.random.permutation(X)
     # X = np.random.random((X.shape[0], X.shape[1]))
@@ -338,10 +347,10 @@ def run_variable_selection_permutation(df, transcript):
     # Calculate the first and second derivatives
     X1 = savgol_filter(X, 11, polyorder = 2, deriv=1)
     X2 = savgol_filter(X, 13, polyorder = 2,deriv=2)
-
+    
     # Define the PLS regression object & fit data
-    pls = PLSRegression(n_components=8)
-    pls.fit(X1, y)
+    pls_temp = PLSRegression(n_components=8)
+    pls_temp.fit(X1, y)
 
     # Plot spectra
     plt.figure(figsize=(8,9))
@@ -351,7 +360,7 @@ def run_variable_selection_permutation(df, transcript):
         plt.ylabel('First derivative absorbance spectra')
 
         ax2 = plt.subplot(212, sharex=ax1)
-        plt.plot(wl, np.abs(pls.coef_[:,0]))
+        plt.plot(wl, np.abs(pls_temp.coef_[:,0]))
         plt.xlabel('Wavelength (nm)')
         plt.ylabel('Absolute value of PLS coefficients')
         plt.savefig(os.path.join(plot_out_dir, f'{transcript}_first_derivative_absolute_value_pls_coeff_permutation.png'), transparent=True)
@@ -367,8 +376,11 @@ def run_variable_selection_permutation(df, transcript):
     X = Xc[:,mseminy[0]:]
 
     filename = os.path.join(model_out_dir, '_'.join([transcript, 'model.sav']))
-    res_df = simple_pls_cv(X, y, ncomp, transcript=transcript, trained_model=filename)#, permutation=False)
+    print(filename, transcript, ncomp)
+    res_df, pls = simple_pls_cv(X, y, ncomp, transcript=transcript, trained_model=filename)#, permutation=False)
     out_file = os.path.join(csv_out_dir, '_'.join([transcript, 'correlation_score_permutation.csv']))
+    res_df['transcript'] = transcript
+    res_df = res_df.set_index('transcript')
     res_df.to_csv(out_file)
 
     # Plot spectra with superimpose selected bands
