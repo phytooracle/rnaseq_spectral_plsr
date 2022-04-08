@@ -3,3 +3,4 @@ plsr_outputs/
 rnaseq_spectra/
 rnaseq_spectral_plsr.simg
 interactive_node_*
+interactive_node.sh
