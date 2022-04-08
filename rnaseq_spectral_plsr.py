@@ -72,6 +72,13 @@ def get_args():
                         type=str,
                         default='models')
 
+    parser.add_argument('-p',
+                        '--permutation_out_dir',
+                        help='Permutation output directory',
+                        metavar='str',
+                        type=str,
+                        default='permutation')
+
     parser.add_argument('-t',
                         '--test_size',
                         help='Test size for train/test split.',
@@ -178,20 +185,58 @@ def simple_pls_cv(X, y, n_comp, transcript, rng=123, trained_model=None):#, perm
 
     args = get_args()
     if trained_model:
-        print('Loading saved model.')
+        print('Loading saved model for permutation.')
         score_list = []
         filename = os.path.join(model_out_dir, '_'.join([transcript, 'model.sav']))
         pls = pickle.load(open(filename, 'rb'))
-        for i in range(0,1000):
+        for i in range(1,1001):
             rng = np.random.default_rng()
             X_perm = rng.permutation(X, axis=1)
-            print(X_perm)
+            # ADD
+            X_perm = rng.permutation(X_perm, axis=0)
+            wl = np.arange(350, 2501, 1)
+            
+            # Define the PLS regression object & fit data
+            pls_temp = PLSRegression(n_components=8)
+            pls_temp.fit(X_perm, y)
+
+            # # Plot spectra
+            # plt.figure(figsize=(8,9))
+            # with plt.style.context(('ggplot')):
+            #     ax1 = plt.subplot(211)
+            #     plt.plot(wl, X_perm.T)
+            #     plt.ylabel('First derivative spectra')
+
+            #     ax2 = plt.subplot(212, sharex=ax1)
+            #     plt.plot(wl, np.abs(pls_temp.coef_[:,0]))
+            #     plt.xlabel('Wavelength (nm)')
+            #     plt.ylabel('Absolute value of PLS coefficients')
+            #     plt.savefig(os.path.join(permutation_out_dir, f'{transcript}_first_derivative_absolute_value_pls_coeff_permutation_{i}.png'), transparent=True)
+            #     # plt.show()
+            
+            # # Plot spectra with superimpose selected bands
+            # ix = np.in1d(wl.ravel(), wl[sorted_ind][:wav])
+            # fig, ax = plt.subplots(figsize=(8,9))
+            # with plt.style.context(('ggplot')):
+            #     ax.plot(wl, X_perm.T)
+            #     plt.ylabel('First derivative spectra')
+            #     plt.xlabel('Wavelength (nm)')
+                
+            # collection = collections.BrokenBarHCollection.span_where(
+            #     wl, ymin=-1, ymax=1, where=ix == True, facecolor='red', alpha=0.3)
+            # ax.add_collection(collection)
+            # plt.savefig(os.path.join(permutation_out_dir, f'{transcript}_variable_selection_permutation_{str(i).zfill(4)}.png'), transparent=True)
+            
+            Xc = X_perm[:,sorted_ind]
+            X_perm = Xc[:,mseminy[0]:]
             result = pls.score(X_perm, y)
-            print(result)
             score_list.append(result)
 
+            with open(os.path.join(permutation_out_dir, '_'.join([transcript, f'permutation_{str(i).zfill(4)}.npy'])), 'wb') as f:
+   
+                np.save(f, X_perm)
+
         res_df = pd.DataFrame(score_list, columns=['score_permutation'])
-        print(res_df)
 
     else:
         # Split data into train & test datasets
@@ -208,11 +253,6 @@ def simple_pls_cv(X, y, n_comp, transcript, rng=123, trained_model=None):#, perm
         # Calculate mean square error for calibration and cross validation
         mse_train = mean_squared_error(y_train, pls.predict(X_train))
         mse_test = mean_squared_error(y_test, pls.predict(X_test))
-
-        # if permutation:
-        #     print('Running permutation test')
-        #     scores_permuted = get_scores_of_permuted_features(X_train, n_comp)
-        #     print(scores_permuted)
     
         print('Train R2: %5.3f'  % score_train)
         print('Train MSE: %5.3f' % mse_train)
@@ -242,7 +282,6 @@ def simple_pls_cv(X, y, n_comp, transcript, rng=123, trained_model=None):#, perm
             plt.xlabel('Predicted')
             plt.ylabel('Measured')
             plt.savefig(os.path.join(plot_out_dir, f'{transcript}_simple_pls_{n_comp}.png'), transparent=True)
-            # plt.show()
 
     return res_df, pls
 
@@ -260,10 +299,6 @@ def run_variable_selection(df, transcript):
     # Calculate the first and second derivatives
     X1 = savgol_filter(X, 11, polyorder = 2, deriv=1)
     X2 = savgol_filter(X, 13, polyorder = 2,deriv=2)
-    
-    # Standardize data
-#     X1 = StandardScaler().fit_transform(X1)
-#     X2 = StandardScaler().fit_transform(X2)
 
     # Define the PLS regression object & fit data
     pls = PLSRegression(n_components=8)
@@ -274,19 +309,13 @@ def run_variable_selection(df, transcript):
     with plt.style.context(('ggplot')):
         ax1 = plt.subplot(211)
         plt.plot(wl, X1.T)
-        plt.ylabel('First derivative absorbance spectra')
+        plt.ylabel('First derivative spectra')
 
         ax2 = plt.subplot(212, sharex=ax1)
         plt.plot(wl, np.abs(pls.coef_[:,0]))
         plt.xlabel('Wavelength (nm)')
         plt.ylabel('Absolute value of PLS coefficients')
         plt.savefig(os.path.join(plot_out_dir, f'{transcript}_first_derivative_absolute_value_pls_coeff.png'), transparent=True)
-
-    # # Get the list of indices that sorts the PLS coefficients in ascending order of the absolute value
-    # sorted_ind = np.argsort(np.abs(pls.coef_[:,0]))
-
-    # # Sort spectra according to ascending absolute value of PLS coefficients
-    # Xc = X1[:,sorted_ind]
 
     # Simple PLSR 
     simple_pls_cv(X1, y, 8, transcript=transcript)
@@ -306,7 +335,7 @@ def run_variable_selection(df, transcript):
     fig, ax = plt.subplots(figsize=(8,9))
     with plt.style.context(('ggplot')):
         ax.plot(wl, X1.T)
-        plt.ylabel('First derivative absorbance spectra')
+        plt.ylabel('First derivative spectra')
         plt.xlabel('Wavelength (nm)')
         
     collection = collections.BrokenBarHCollection.span_where(
@@ -333,75 +362,21 @@ def run_variable_selection(df, transcript):
 def run_variable_selection_permutation(df, transcript):
 
     # Collect response (RNAseq TPM) and explanatory variables (spectra) for a single transcript
-    print(f'Processing transcript: {transcript}')
+    print(f'Processing transcript with permutation: {transcript}')
     y = df[transcript].values
     X = df[[str(i) for i in range(350, 2501)]]
-    rng = np.random.default_rng()
-    # X = rng.permutation(X, axis=1)
-    # X = np.random.permutation(X)
-    # X = np.random.random((X.shape[0], X.shape[1]))
-    print(f'Randomized data shape: {X.shape}')
-    wl = np.arange(350, 2501, 1)
-    
-    
-    # Calculate the first and second derivatives
+
+    # Calculate the first derivative
     X1 = savgol_filter(X, 11, polyorder = 2, deriv=1)
-    X2 = savgol_filter(X, 13, polyorder = 2,deriv=2)
-    
-    # Define the PLS regression object & fit data
-    pls_temp = PLSRegression(n_components=8)
-    pls_temp.fit(X1, y)
-
-    # Plot spectra
-    plt.figure(figsize=(8,9))
-    with plt.style.context(('ggplot')):
-        ax1 = plt.subplot(211)
-        plt.plot(wl, X1.T)
-        plt.ylabel('First derivative absorbance spectra')
-
-        ax2 = plt.subplot(212, sharex=ax1)
-        plt.plot(wl, np.abs(pls_temp.coef_[:,0]))
-        plt.xlabel('Wavelength (nm)')
-        plt.ylabel('Absolute value of PLS coefficients')
-        plt.savefig(os.path.join(plot_out_dir, f'{transcript}_first_derivative_absolute_value_pls_coeff_permutation.png'), transparent=True)
-        # plt.show()
-
-    # Simple PLSR 
-    # simple_pls_cv(X1, y, 8, transcript=transcript)
-
-    # Variable selection PLSR
-    # opt_Xc, ncomp, wav, sorted_ind = pls_variable_selection(X1, y, 15, transcript=transcript)
         
-    Xc = X1[:,sorted_ind]
-    X = Xc[:,mseminy[0]:]
-
     filename = os.path.join(model_out_dir, '_'.join([transcript, 'model.sav']))
-    print(filename, transcript, ncomp)
-    res_df, pls = simple_pls_cv(X, y, ncomp, transcript=transcript, trained_model=filename)#, permutation=False)
+    res_df, pls = simple_pls_cv(X1, y, ncomp, transcript=transcript, trained_model=filename)#, permutation=False)
     out_file = os.path.join(csv_out_dir, '_'.join([transcript, 'correlation_score_permutation.csv']))
     res_df['transcript'] = transcript
     res_df = res_df.set_index('transcript')
     res_df.to_csv(out_file)
 
-    # Plot spectra with superimpose selected bands
-    ix = np.in1d(wl.ravel(), wl[sorted_ind][:wav])
-    fig, ax = plt.subplots(figsize=(8,9))
-    with plt.style.context(('ggplot')):
-        ax.plot(wl, X1.T)
-        plt.ylabel('First derivative absorbance spectra')
-        plt.xlabel('Wavelength (nm)')
-        
-    collection = collections.BrokenBarHCollection.span_where(
-        wl, ymin=-1, ymax=1, where=ix == True, facecolor='red', alpha=0.3)
-    ax.add_collection(collection)
-    plt.savefig(os.path.join(plot_out_dir, f'{transcript}_variable_selection_permutation.png'), transparent=True)
-    # plt.show()
-    
-    # Save wavelength (used & removed)
-    # used_wavelengths = pd.DataFrame([wl, ix]).T.rename(columns={0: 'wavelength', 1: 'removed'})
-    # out_file = os.path.join(csv_out_dir, '_'.join([transcript, 'selected_wavelengths.csv']))
-    # used_wavelengths.to_csv(out_file, index=False)
-    print(f'Done processing transcript: {transcript}')
+    print(f'Done processing transcript with permutation: {transcript}')
     print('#----------------------------------------------------------------------------')
 
 
@@ -441,6 +416,14 @@ def main():
         except OSError:
             pass
     
+    global permutation_out_dir
+    permutation_out_dir = os.path.join(args.outdir, args.permutation_out_dir, transcript)
+    if not os.path.isdir(permutation_out_dir):
+        try:
+            os.makedirs(permutation_out_dir)
+        except OSError:
+            pass
+
     # Run PLSR and variable selection
     run_variable_selection(df=df, transcript=transcript)
     run_variable_selection_permutation(df=df, transcript=transcript)
