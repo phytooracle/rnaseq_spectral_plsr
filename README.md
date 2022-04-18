@@ -27,5 +27,5 @@ This script (i) splits combined RNA-Seq & hyperspectral data for each transcript
 To run the scrip, you have to specify at least the CSV:
 
 ```
-./rnaseq_spectral_plsr.py -c 
+./rnaseq_spectral_plsr.py -c ./rnaseq_spectra/Gh_A01G026200_tpm_spectra.csv
 ```
