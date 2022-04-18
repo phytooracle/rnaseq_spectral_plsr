@@ -282,7 +282,7 @@ def run_variable_selection(df, transcript):
 
     # Variable selection PLSR
     opt_Xc, ncomp, wav, sorted_ind = pls_variable_selection(X1, y, 15, transcript=transcript)
-    res_df = simple_pls_cv(opt_Xc, y, ncomp, transcript=transcript, permutation=True)
+    res_df = simple_pls_cv(opt_Xc, y, ncomp, transcript=transcript, permutation=False)
     out_file = os.path.join(csv_out_dir, '_'.join([transcript, 'correlation_score.csv']))
     res_df.to_csv(out_file)
 
