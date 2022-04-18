@@ -6,6 +6,7 @@ Purpose: Partial least squares regression (PLSR) on gene expression (response va
 """
 
 import argparse
+# from math import perm
 import os 
 import sys
 from sys import stdout
@@ -19,7 +20,11 @@ from sklearn.cross_decomposition import PLSRegression
 from sklearn.model_selection import cross_val_predict
 from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.utils import shuffle
+from sklearn.model_selection import train_test_split, StratifiedKFold, permutation_test_score
 import matplotlib.collections as collections
+import pickle
+import multiprocessing
+import itertools
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -60,6 +65,27 @@ def get_args():
                         type=str,
                         default='plsr_outputs')
 
+    parser.add_argument('-m',
+                        '--model_out_dir',
+                        help='Model output directory',
+                        metavar='str',
+                        type=str,
+                        default='models')
+
+    parser.add_argument('-p',
+                        '--permutation_out_dir',
+                        help='Permutation output directory',
+                        metavar='str',
+                        type=str,
+                        default='permutation')
+
+    parser.add_argument('-t',
+                        '--test_size',
+                        help='Test size for train/test split.',
+                        metavar='float',
+                        type=float,
+                        default=0.25)
+
     return parser.parse_args()
 
 
@@ -98,6 +124,7 @@ def pls_variable_selection(X, y, max_comp, transcript):
     stdout.write("\n")
  
     # Calculate and print the position of minimum in MSE
+    global mseminy
     mseminx,mseminy = np.where(mse==np.min(mse[np.nonzero(mse)]))
  
     print("Optimized number of PLS components: ", mseminx[0]+1)
@@ -119,56 +146,144 @@ def pls_variable_selection(X, y, max_comp, transcript):
     return(Xc[:,mseminy[0]:],mseminx[0]+1,mseminy[0], sorted_ind)
 
 
-# --------------------------------------------------
-def simple_pls_cv(X, y, n_comp, transcript):
- 
-    # Run PLS with suggested number of components
-    pls = PLSRegression(n_components=n_comp)
-    pls.fit(X, y)
-    y_c = pls.predict(X)
- 
-    # Cross-validation
-    y_cv = cross_val_predict(pls, X, y, cv=10)    
- 
-    # Calculate scores for calibration and cross-validation
-    score_c = r2_score(y, y_c)
-    score_cv = r2_score(y, y_cv)
- 
-    # Calculate mean square error for calibration and cross validation
-    mse_c = mean_squared_error(y, y_c)
-    mse_cv = mean_squared_error(y, y_cv)
- 
-    print('R2 calib: %5.3f'  % score_c)
-    print('R2 CV: %5.3f'  % score_cv)
-    print('MSE calib: %5.3f' % mse_c)
-    print('MSE CV: %5.3f' % mse_cv)
-    res_dict = {}
-    
-    res_dict[transcript] = {
-        'calibration_score': score_c, 
-        'cross_validation_score': score_cv,
-        'calibration_mse': mse_c, 
-        'cross_validation_mse': mse_cv,
-        'number_components': n_comp
-    }
-    
-    res_df = pd.DataFrame.from_dict(res_dict, orient='index')
-    res_df.index.name = 'transcript'
- 
-    # Plot regression 
-    z = np.polyfit(y, y_cv, 1)
-    with plt.style.context(('ggplot')):
-        fig, ax = plt.subplots(figsize=(9, 5))
-        ax.scatter(y_cv, y, c='red', edgecolors='k')
-        ax.plot(z[1]+z[0]*y, y, c='blue', linewidth=1)
-        ax.plot(y, y, color='green', linewidth=1)
-        plt.title('$R^{2}$ (CV): '+str(score_cv))
-        plt.xlabel('Predicted')
-        plt.ylabel('Measured')
-        plt.savefig(os.path.join(plot_out_dir, f'{transcript}_simple_pls_{n_comp}.png'), transparent=True)
-        # plt.show()
+def func(args):
+    i, x_to_permute, n_comp = args
+    np.random.seed(i + x_to_permute*1000)
 
-    return res_df
+    # permute x_train for feature x_to_permute
+    perm_idx = np.random.choice(len(X_train), len(X_train), False)
+    x_train_p = X_train.copy()
+    x_train_p[:, x_to_permute] = x_train_p[perm_idx, x_to_permute]
+
+    # bts_est = ExtraTreesClassifier()
+    # bts_est.fit(x_train_p, y_train.ravel())
+    pls = PLSRegression(n_components=n_comp)
+    pls.fit(x_train_p, y_train)
+
+    # permute x_val for feature x_to_permute
+    perm_idx = np.random.choice(len(X_test), len(X_test), False)
+    x_val_p = X_test.copy()
+    x_val_p[:, x_to_permute] = x_val_p[perm_idx, x_to_permute]
+
+    score = pls.score(x_val_p, y_test)
+
+    return score
+
+
+def get_scores_of_permuted_features(X_train, n_comp):
+    scores_permuted = []
+    cpu_count = os.cpu_count()
+
+    for x_to_permute in range(X_train.shape[1]):
+        score = multiprocessing.Pool(cpu_count).map(func, itertools.product(range(99), [x_to_permute], [n_comp] * 50))
+        scores_permuted.append(score)
+    return np.array(scores_permuted).T
+
+
+# --------------------------------------------------
+def simple_pls_cv(X, y, n_comp, transcript, rng=123, trained_model=None):#, permutation=False):
+
+    args = get_args()
+    if trained_model:
+        print('Loading saved model for permutation.')
+        score_list = []
+        filename = os.path.join(model_out_dir, '_'.join([transcript, 'model.sav']))
+        pls = pickle.load(open(filename, 'rb'))
+        for i in range(1,1001):
+            rng = np.random.default_rng()
+            X_perm = rng.permutation(X, axis=1)
+            # ADD
+            X_perm = rng.permutation(X_perm, axis=0)
+            wl = np.arange(350, 2501, 1)
+            
+            # Define the PLS regression object & fit data
+            pls_temp = PLSRegression(n_components=8)
+            pls_temp.fit(X_perm, y)
+
+            # # Plot spectra
+            # plt.figure(figsize=(8,9))
+            # with plt.style.context(('ggplot')):
+            #     ax1 = plt.subplot(211)
+            #     plt.plot(wl, X_perm.T)
+            #     plt.ylabel('First derivative spectra')
+
+            #     ax2 = plt.subplot(212, sharex=ax1)
+            #     plt.plot(wl, np.abs(pls_temp.coef_[:,0]))
+            #     plt.xlabel('Wavelength (nm)')
+            #     plt.ylabel('Absolute value of PLS coefficients')
+            #     plt.savefig(os.path.join(permutation_out_dir, f'{transcript}_first_derivative_absolute_value_pls_coeff_permutation_{i}.png'), transparent=True)
+            #     # plt.show()
+            
+            # # Plot spectra with superimpose selected bands
+            # ix = np.in1d(wl.ravel(), wl[sorted_ind][:wav])
+            # fig, ax = plt.subplots(figsize=(8,9))
+            # with plt.style.context(('ggplot')):
+            #     ax.plot(wl, X_perm.T)
+            #     plt.ylabel('First derivative spectra')
+            #     plt.xlabel('Wavelength (nm)')
+                
+            # collection = collections.BrokenBarHCollection.span_where(
+            #     wl, ymin=-1, ymax=1, where=ix == True, facecolor='red', alpha=0.3)
+            # ax.add_collection(collection)
+            # plt.savefig(os.path.join(permutation_out_dir, f'{transcript}_variable_selection_permutation_{str(i).zfill(4)}.png'), transparent=True)
+            
+            Xc = X_perm[:,sorted_ind]
+            X_perm = Xc[:,mseminy[0]:]
+            result = pls.score(X_perm, y)
+            score_list.append(result)
+
+            with open(os.path.join(permutation_out_dir, '_'.join([transcript, f'permutation_{str(i).zfill(4)}.npy'])), 'wb') as f:
+   
+                np.save(f, X_perm)
+
+        res_df = pd.DataFrame(score_list, columns=['score_permutation'])
+
+    else:
+        # Split data into train & test datasets
+        X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=rng, test_size=args.test_size)
+        
+        # Run PLS with suggested number of components
+        pls = PLSRegression(n_components=n_comp)
+        pls.fit(X_train, y_train)
+        
+        # Calculate scores for train calibration and test
+        score_train = pls.score(X_train, y_train)
+        score_test = pls.score(X_test, y_test)
+    
+        # Calculate mean square error for calibration and cross validation
+        mse_train = mean_squared_error(y_train, pls.predict(X_train))
+        mse_test = mean_squared_error(y_test, pls.predict(X_test))
+    
+        print('Train R2: %5.3f'  % score_train)
+        print('Train MSE: %5.3f' % mse_train)
+        print('Test R2: %5.3f'  % score_test)
+        print('Test MSE: %5.3f' % mse_test)
+        res_dict = {}
+        
+        res_dict[transcript] = {
+            'score_train': score_train, 
+            'score_test': score_test,
+            'mse_train': mse_train, 
+            'mse_test': mse_test,
+            'number_components': n_comp
+        }
+        
+        res_df = pd.DataFrame.from_dict(res_dict, orient='index')
+        res_df.index.name = 'transcript'
+    
+        # Plot regression 
+        z = np.polyfit(y_test, pls.predict(X_test), 1)
+        with plt.style.context(('ggplot')):
+            fig, ax = plt.subplots(figsize=(9, 5))
+            ax.scatter(pls.predict(X_test), y_test, c='red', edgecolors='k')
+            ax.plot(z[1]+z[0]*y, y, c='blue', linewidth=1)
+            ax.plot(y, y, color='green', linewidth=1, linestyle='dashed')
+            plt.title('$R^{2}$ (CV): '+str(score_test))
+            plt.xlabel('Predicted')
+            plt.ylabel('Measured')
+            plt.savefig(os.path.join(plot_out_dir, f'{transcript}_simple_pls_{n_comp}.png'), transparent=True)
+
+    return res_df, pls
 
 
 # --------------------------------------------------
@@ -184,10 +299,6 @@ def run_variable_selection(df, transcript):
     # Calculate the first and second derivatives
     X1 = savgol_filter(X, 11, polyorder = 2, deriv=1)
     X2 = savgol_filter(X, 13, polyorder = 2,deriv=2)
-    
-    # Standardize data
-#     X1 = StandardScaler().fit_transform(X1)
-#     X2 = StandardScaler().fit_transform(X2)
 
     # Define the PLS regression object & fit data
     pls = PLSRegression(n_components=8)
@@ -198,51 +309,76 @@ def run_variable_selection(df, transcript):
     with plt.style.context(('ggplot')):
         ax1 = plt.subplot(211)
         plt.plot(wl, X1.T)
-        plt.ylabel('First derivative absorbance spectra')
+        plt.ylabel('First derivative spectra')
 
         ax2 = plt.subplot(212, sharex=ax1)
         plt.plot(wl, np.abs(pls.coef_[:,0]))
         plt.xlabel('Wavelength (nm)')
         plt.ylabel('Absolute value of PLS coefficients')
         plt.savefig(os.path.join(plot_out_dir, f'{transcript}_first_derivative_absolute_value_pls_coeff.png'), transparent=True)
-        # plt.show()
-
-    # Get the list of indices that sorts the PLS coefficients in ascending order of the absolute value
-    sorted_ind = np.argsort(np.abs(pls.coef_[:,0]))
-
-    # Sort spectra according to ascending absolute value of PLS coefficients
-    Xc = X1[:,sorted_ind]
 
     # Simple PLSR 
     simple_pls_cv(X1, y, 8, transcript=transcript)
 
     # Variable selection PLSR
+    global ncomp
+    global wav
+    global sorted_ind
+
     opt_Xc, ncomp, wav, sorted_ind = pls_variable_selection(X1, y, 15, transcript=transcript)
-    res_df = simple_pls_cv(opt_Xc, y, ncomp, transcript=transcript)
+    res_df, pls = simple_pls_cv(opt_Xc, y, ncomp, transcript=transcript)#, permutation=False)
     out_file = os.path.join(csv_out_dir, '_'.join([transcript, 'correlation_score.csv']))
     res_df.to_csv(out_file)
 
-
-    # Visualize discarded bands
-    ix = np.in1d(wl.ravel(), wl[sorted_ind][:wav])
-
-
-
-
     # Plot spectra with superimpose selected bands
+    ix = np.in1d(wl.ravel(), wl[sorted_ind][:wav])
     fig, ax = plt.subplots(figsize=(8,9))
     with plt.style.context(('ggplot')):
         ax.plot(wl, X1.T)
-        plt.ylabel('First derivative absorbance spectra')
+        plt.ylabel('First derivative spectra')
         plt.xlabel('Wavelength (nm)')
         
     collection = collections.BrokenBarHCollection.span_where(
         wl, ymin=-1, ymax=1, where=ix == True, facecolor='red', alpha=0.3)
     ax.add_collection(collection)
     plt.savefig(os.path.join(plot_out_dir, f'{transcript}_variable_selection.png'), transparent=True)
-    # plt.show()
+    
+    # Save wavelength (used & removed)
+    used_wavelengths = pd.DataFrame([wl, ix]).T.rename(columns={0: 'wavelength', 1: 'removed'})
+    used_wavelengths['transcript'] = transcript
+    used_wavelengths = used_wavelengths.set_index('transcript')
+    out_file = os.path.join(csv_out_dir, '_'.join([transcript, 'selected_wavelengths.csv']))
+    used_wavelengths.to_csv(out_file)
+    
+    # Save PLSR model 
+    filename = os.path.join(model_out_dir, '_'.join([transcript, 'model.sav']))
+    pickle.dump(pls, open(filename, 'wb'))
+
     print(f'Done processing transcript: {transcript}')
     print('#----------------------------------------------------------------------------')
+
+
+# --------------------------------------------------
+def run_variable_selection_permutation(df, transcript):
+
+    # Collect response (RNAseq TPM) and explanatory variables (spectra) for a single transcript
+    print(f'Processing transcript with permutation: {transcript}')
+    y = df[transcript].values
+    X = df[[str(i) for i in range(350, 2501)]]
+
+    # Calculate the first derivative
+    X1 = savgol_filter(X, 11, polyorder = 2, deriv=1)
+        
+    filename = os.path.join(model_out_dir, '_'.join([transcript, 'model.sav']))
+    res_df, pls = simple_pls_cv(X1, y, ncomp, transcript=transcript, trained_model=filename)#, permutation=False)
+    out_file = os.path.join(csv_out_dir, '_'.join([transcript, 'correlation_score_permutation.csv']))
+    res_df['transcript'] = transcript
+    res_df = res_df.set_index('transcript')
+    res_df.to_csv(out_file)
+
+    print(f'Done processing transcript with permutation: {transcript}')
+    print('#----------------------------------------------------------------------------')
+
 
 # --------------------------------------------------
 def main():
@@ -271,9 +407,26 @@ def main():
             os.makedirs(csv_out_dir)
         except OSError:
             pass
+
+    global model_out_dir
+    model_out_dir = os.path.join(args.outdir, args.model_out_dir, transcript)
+    if not os.path.isdir(model_out_dir):
+        try:
+            os.makedirs(model_out_dir)
+        except OSError:
+            pass
     
+    global permutation_out_dir
+    permutation_out_dir = os.path.join(args.outdir, args.permutation_out_dir, transcript)
+    if not os.path.isdir(permutation_out_dir):
+        try:
+            os.makedirs(permutation_out_dir)
+        except OSError:
+            pass
+
     # Run PLSR and variable selection
     run_variable_selection(df=df, transcript=transcript)
+    run_variable_selection_permutation(df=df, transcript=transcript)
 
 
 # --------------------------------------------------
