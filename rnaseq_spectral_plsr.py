@@ -16,6 +16,7 @@ from scipy.signal import savgol_filter
 from sklearn.cross_decomposition import PLSRegression
 from sklearn.model_selection import cross_val_predict
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error
 import matplotlib.collections as collections
 import pickle
 
@@ -92,10 +93,10 @@ def pls_variable_selection(X, y, max_comp, transcript):
         - transcript: name of transcript, string variable
 
     Output:
-        - Xc[:,mseminy[0]:]: explanatory variable filtered by number of components found in lowest MSE search 
+        - Xc[:,mseminy[0]:]: explanatory variable data optomized for number of components with lowest MSE 
         - mseminx[0]+1: occurence of minimum MSE in x
         - mseminy[0]: occurence of minimum MSE in y
-        - sorted_ind: index of spectra
+        - sorted_ind: index of spectra selected
     '''
     
     # Define MSE array to be populated
@@ -151,7 +152,7 @@ def pls_variable_selection(X, y, max_comp, transcript):
 
 
 # --------------------------------------------------
-def simple_pls_cv(X, y, n_comp, transcript, rng=123, trained_model=None):
+def pls_test_train(X, y, n_comp, transcript, rng=123, trained_model=None):
     '''
     Run PLS given the explanatory and response variables, number of\
          maximum components, and transcript name, and trained model (optional). If model is present, permutations will be run
@@ -284,7 +285,7 @@ def run_variable_selection(df, transcript):
         plt.savefig(os.path.join(plot_out_dir, f'{transcript}_first_derivative_absolute_value_pls_coeff.png'), transparent=True)
 
     # Simple PLSR 
-    simple_pls_cv(X1, y, 8, transcript=transcript)
+    pls_test_train(X1, y, 8, transcript=transcript)
 
     # Variable selection PLSR
     global ncomp
@@ -292,7 +293,7 @@ def run_variable_selection(df, transcript):
     global sorted_ind
 
     opt_Xc, ncomp, wav, sorted_ind = pls_variable_selection(X1, y, 15, transcript=transcript)
-    res_df, pls = simple_pls_cv(opt_Xc, y, ncomp, transcript=transcript)#, permutation=False)
+    res_df, pls = pls_test_train(opt_Xc, y, ncomp, transcript=transcript)#, permutation=False)
     out_file = os.path.join(csv_out_dir, '_'.join([transcript, 'correlation_score.csv']))
     res_df.to_csv(out_file)
 
@@ -325,7 +326,7 @@ def run_variable_selection(df, transcript):
 
 
 # --------------------------------------------------
-def run_variable_selection_permutation(df, transcript):
+def run_permutation(df, transcript):
     '''
     Run permutation on data. 
 
@@ -345,7 +346,7 @@ def run_variable_selection_permutation(df, transcript):
     X1 = savgol_filter(X, 11, polyorder = 2, deriv=1)
         
     filename = os.path.join(model_out_dir, '_'.join([transcript, 'model.sav']))
-    res_df, pls = simple_pls_cv(X1, y, ncomp, transcript=transcript, trained_model=filename)
+    res_df, pls = pls_test_train(X1, y, ncomp, transcript=transcript, trained_model=filename)
     out_file = os.path.join(csv_out_dir, '_'.join([transcript, 'correlation_score_permutation.csv']))
     res_df['transcript'] = transcript
     res_df = res_df.set_index('transcript')
@@ -401,7 +402,7 @@ def main():
 
     # Run PLSR and variable selection
     run_variable_selection(df=df, transcript=transcript)
-    run_variable_selection_permutation(df=df, transcript=transcript)
+    run_permutation(df=df, transcript=transcript)
 
 
 # --------------------------------------------------
