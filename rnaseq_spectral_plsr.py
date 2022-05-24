@@ -19,6 +19,13 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
 import matplotlib.collections as collections
 import pickle
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.feature_selection import SelectFromModel
+
+from sklearn.feature_selection import RFE
+from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import StandardScaler
+from sklearn.feature_selection import VarianceThreshold
 
 
 # --------------------------------------------------
@@ -76,7 +83,7 @@ def get_args():
                         help='Test size for train/test split.',
                         metavar='float',
                         type=float,
-                        default=0.25)
+                        default=0.20)
 
     return parser.parse_args()
 
@@ -357,6 +364,68 @@ def run_permutation(df, transcript):
 
 
 # --------------------------------------------------
+def train_plsr(ncomp, X_train, y_train, X_test, y_test):
+    # Run PLS with suggested number of components
+    pls = PLSRegression(n_components=ncomp)
+    pls.fit(X_train, y_train)
+    
+    # Calculate scores for train calibration and test
+    score_train = pls.score(X_train, y_train)
+    score_test = pls.score(X_test, y_test)
+
+    # Calculate mean square error for calibration and cross validation
+    mse_train = mean_squared_error(y_train, pls.predict(X_train))
+    mse_test = mean_squared_error(y_test, pls.predict(X_test))
+
+    print('Train R2: %5.3f'  % score_train)
+    print('Train MSE: %5.3f' % mse_train)
+    print('Test R2: %5.3f'  % score_test)
+    print('Test MSE: %5.3f' % mse_test)
+
+
+# --------------------------------------------------
+def random_forest_variable_selection(df, transcript, rng=123):
+    args = get_args()
+    
+    scaler = StandardScaler()
+    # print(df.drop(['entry', 'treatment'], axis=1))
+    # df = pd.DataFrame(scaler.fit_transform(df), columns = df.columns)
+    # df = scaler.fit_transform(df)
+    print(f'>>>INFO: Running random forest: {transcript}')
+    y = df[[transcript]]
+    y = pd.DataFrame(scaler.fit_transform(y), columns = y.columns)
+
+    X = df[[str(i) for i in range(350, 2501)]]
+    X = pd.DataFrame(scaler.fit_transform(X), columns = X.columns)
+
+    wl = np.arange(350, 2501, 1)
+    
+    selector = VarianceThreshold(1)
+    selector.fit(X)
+    selected_X = X[X.columns[selector.get_support()]]
+
+    X_train, X_test, y_train, y_test = train_test_split(selected_X, y, random_state=rng, test_size=args.test_size)
+    opt_Xc, ncomp, wav, sorted_ind = pls_variable_selection(X_train.values, y_train.values, 15, transcript=transcript)
+    
+    # Run default PLSR
+    print('DEFAULT PLSR')
+    train_plsr(ncomp=1, 
+                    X_train=X_train, 
+                    y_train=y_train, 
+                    X_test=X_test, 
+                    y_test=y_test)
+
+    # Run optimal PLSR
+    print('OPTIMAL PLSR')
+    train_plsr(ncomp=ncomp, 
+                     X_train=X_train, 
+                     y_train=y_train, 
+                     X_test=X_test, 
+                     y_test=y_test)
+    
+
+
+# --------------------------------------------------
 def main():
     """Run PLSR here"""
 
@@ -401,8 +470,9 @@ def main():
             pass
 
     # Run PLSR and variable selection
-    run_variable_selection(df=df, transcript=transcript)
-    run_permutation(df=df, transcript=transcript)
+    random_forest_variable_selection(df=df, transcript=transcript)
+    # run_variable_selection(df=df, transcript=transcript)
+    # run_permutation(df=df, transcript=transcript)
 
 
 # --------------------------------------------------
