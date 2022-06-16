@@ -21,11 +21,10 @@ import matplotlib.collections as collections
 import pickle
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_selection import SelectFromModel
-
 from sklearn.feature_selection import RFE
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
-from sklearn.feature_selection import VarianceThreshold
+from sklearn.feature_selection import VarianceThreshold, f_regression, mutual_info_regression, SelectFdr
 
 
 # --------------------------------------------------
@@ -377,52 +376,106 @@ def train_plsr(ncomp, X_train, y_train, X_test, y_test):
     mse_train = mean_squared_error(y_train, pls.predict(X_train))
     mse_test = mean_squared_error(y_test, pls.predict(X_test))
 
-    print('Train R2: %5.3f'  % score_train)
-    print('Train MSE: %5.3f' % mse_train)
-    print('Test R2: %5.3f'  % score_test)
-    print('Test MSE: %5.3f' % mse_test)
+    # print('Train R2: %5.3f'  % score_train)
+    # print('Train MSE: %5.3f' % mse_train)
+    # print('Test R2: %5.3f'  % score_test)
+    # print('Test MSE: %5.3f' % mse_test)
+
+    return score_train, score_test, mse_train, mse_test
 
 
 # --------------------------------------------------
-def random_forest_variable_selection(df, transcript, rng=123):
+def scale_data(data):
+
+    scaler = StandardScaler()
+    scaled_data = pd.DataFrame(scaler.fit_transform(data), columns = data.columns)
+
+    return scaled_data
+
+
+# --------------------------------------------------
+def find_optimal_number_components(X_train, y_train, X_test, y_test):
+
+    # Run PLSR
+    result_dict = {}
+
+    for i in range(1, 21):
+  
+        score_train, score_test, mse_train, mse_test = train_plsr(ncomp=i, 
+                                                                  X_train=X_train, 
+                                                                  y_train=y_train,
+                                                                  X_test=X_test, 
+                                                                  y_test=y_test)
+
+        ratio = abs(score_train - score_test)
+
+        result_dict[i] = {
+            'number_of_components': int(i),
+            'train_test_ratio': ratio,
+            'score_train': score_train,
+            'mse_train': mse_train, 
+            'rmse_train': np.sqrt(mse_train),
+            'score_test': score_test,
+            'mse_test': mse_test,
+            'rmse_test': np.sqrt(mse_test)
+        }
+
+    df = pd.DataFrame.from_dict(result_dict, orient='index').sort_values('train_test_ratio')
+
+    return df, int(df.iloc[0]['number_of_components'])
+
+
+# --------------------------------------------------
+def variance_threshold_variable_selection(data, y, threshold):
+
+    # Options: f_regression, mutual_info_regression
+
+    selector = VarianceThreshold(threshold=threshold)
+    selector.fit_transform(data)
+    # selector = SelectFdr(mutual_info_regression, alpha=0.05)
+    # print(selector)
+    # selector.fit_transform(data, y)
+    selected_data = data[data.columns[selector.get_support()]]
+
+    return selected_data
+
+# --------------------------------------------------
+def plsr_component_optimization(df, transcript, rng=123):
     args = get_args()
     
-    scaler = StandardScaler()
-    # print(df.drop(['entry', 'treatment'], axis=1))
-    # df = pd.DataFrame(scaler.fit_transform(df), columns = df.columns)
-    # df = scaler.fit_transform(df)
-    print(f'>>>INFO: Running random forest: {transcript}')
+    
+    print(f'>>>INFO: Running PLSR component optimization: {transcript}.')
+    
+    # Prepare explanatory and response variables
     y = df[[transcript]]
-    y = pd.DataFrame(scaler.fit_transform(y), columns = y.columns)
-
     X = df[[str(i) for i in range(350, 2501)]]
-    X = pd.DataFrame(scaler.fit_transform(X), columns = X.columns)
 
-    wl = np.arange(350, 2501, 1)
-    
-    selector = VarianceThreshold(1)
-    selector.fit(X)
-    selected_X = X[X.columns[selector.get_support()]]
+    # Identify variables with variances > 0
+    # X = variance_threshold_variable_selection(data=X, y=y, threshold=0)
+    # print(f'Variables selected: {len(X.columns)}')
 
-    X_train, X_test, y_train, y_test = train_test_split(selected_X, y, random_state=rng, test_size=args.test_size)
-    opt_Xc, ncomp, wav, sorted_ind = pls_variable_selection(X_train.values, y_train.values, 15, transcript=transcript)
-    
-    # Run default PLSR
-    print('DEFAULT PLSR')
-    train_plsr(ncomp=1, 
-                    X_train=X_train, 
-                    y_train=y_train, 
-                    X_test=X_test, 
-                    y_test=y_test)
 
-    # Run optimal PLSR
-    print('OPTIMAL PLSR')
-    train_plsr(ncomp=ncomp, 
-                     X_train=X_train, 
-                     y_train=y_train, 
-                     X_test=X_test, 
-                     y_test=y_test)
+    # Scale data
+    X = scale_data(X)
+    X = variance_threshold_variable_selection(data=X, y=y, threshold=1)
+    print(f'>>>INFO: Variables selected: {len(X.columns)}')
+    print('>>>INFO: Scaling data using StandardScaler.')
+
+    # Created raw(train & test), selected(traing & test)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=rng, test_size=args.test_size)
+
+    # Find optimal number of PLSR components
+    df, n_comp = find_optimal_number_components(X_train, y_train, X_test, y_test)
+    print(f'>>>INFO: Optimal number of components: {n_comp}')
+    df.to_csv('results_var_thresh.csv', index=False)
     
+    final_score_train, final_score_test, final_mse_train, final_mse_test = train_plsr(n_comp, 
+                                                                                      X_train=X_train, 
+                                                                                      y_train=y_train, 
+                                                                                      X_test=X_test, 
+                                                                                      y_test=y_test)
+
+    print(f'Train R2:{final_score_train}\nTest R2: {final_score_test}')
 
 
 # --------------------------------------------------
@@ -470,7 +523,7 @@ def main():
             pass
 
     # Run PLSR and variable selection
-    random_forest_variable_selection(df=df, transcript=transcript)
+    plsr_component_optimization(df=df, transcript=transcript)
     # run_variable_selection(df=df, transcript=transcript)
     # run_permutation(df=df, transcript=transcript)
 
