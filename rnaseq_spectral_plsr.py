@@ -444,7 +444,7 @@ def plsr_component_optimization(df, transcript, rng=123):
     args = get_args()
     
     
-    print(f'>>>INFO: Running PLSR component optimization: {transcript}.')
+    print(f'[INFO] Running PLSR component optimization: {transcript}.')
     
     # Prepare explanatory and response variables
     y = df[[transcript]]
@@ -454,19 +454,18 @@ def plsr_component_optimization(df, transcript, rng=123):
     # X = variance_threshold_variable_selection(data=X, y=y, threshold=0)
     # print(f'Variables selected: {len(X.columns)}')
 
-
     # Scale data
     X = scale_data(X)
     X = variance_threshold_variable_selection(data=X, y=y, threshold=1)
-    print(f'>>>INFO: Variables selected: {len(X.columns)}')
-    print('>>>INFO: Scaling data using StandardScaler.')
+    print(f'[INFO] Variables selected: {len(X.columns)}')
+    print('[INFO] Scaling data using StandardScaler.')
 
     # Created raw(train & test), selected(traing & test)
     X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=rng, test_size=args.test_size)
 
     # Find optimal number of PLSR components
     df, n_comp = find_optimal_number_components(X_train, y_train, X_test, y_test)
-    print(f'>>>INFO: Optimal number of components: {n_comp}')
+    print(f'[INFO] Optimal number of components: {n_comp}')
     df.to_csv('results_var_thresh.csv', index=False)
     
     final_score_train, final_score_test, final_mse_train, final_mse_test = train_plsr(n_comp, 
@@ -475,7 +474,7 @@ def plsr_component_optimization(df, transcript, rng=123):
                                                                                       X_test=X_test, 
                                                                                       y_test=y_test)
 
-    print(f'Train R2:{final_score_train}\nTest R2: {final_score_test}')
+    print(f'[RESULT] Train R2:{final_score_train}\n[RESULT] Test R2: {final_score_test}')
 
 
 # --------------------------------------------------
