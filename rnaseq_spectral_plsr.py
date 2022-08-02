@@ -11,6 +11,7 @@ import sys
 from sys import stdout
 import pandas as pd
 import numpy as np
+import seaborn as sns
 import matplotlib.pyplot as plt
 from scipy.signal import savgol_filter
 from sklearn.cross_decomposition import PLSRegression
@@ -112,11 +113,26 @@ def get_args():
                         type=int,
                         default=123)
 
+    parser.add_argument('-oncfn',
+                        '--onc_file_name',
+                        help='Filename for optimal number of components output file.',
+                        metavar='str',
+                        type=str,
+                        default='find_optimal_number_components')
+
+    parser.add_argument('-oncmt',
+                        '--onc_max_tests',
+                        help='Maximum number of tests',
+                        metavar='int',
+                        type=int,
+                        default=30)
+                        
     return parser.parse_args()
 
 
 # --------------------------------------------------
 def create_output_directories(transcript):
+
     args = get_args()
     #Define plot/figure output directory
     global plot_out_dir 
@@ -155,6 +171,8 @@ def create_output_directories(transcript):
 
 # --------------------------------------------------
 def train_plsr(ncomp, X_train, y_train, X_test, y_test):
+
+    args = get_args()
     # Run PLS with suggested number of components
     pls = PLSRegression(n_components=ncomp)
     pls.fit(X_train, y_train)
@@ -178,6 +196,7 @@ def train_plsr(ncomp, X_train, y_train, X_test, y_test):
 # --------------------------------------------------
 def scale_data(data):
 
+    args = get_args()
     scaler = StandardScaler()
     scaled_data = pd.DataFrame(scaler.fit_transform(data), columns = data.columns)
 
@@ -187,10 +206,11 @@ def scale_data(data):
 # --------------------------------------------------
 def find_optimal_number_components(X_train, y_train, X_test, y_test):
 
+    args = get_args()
     # Run PLSR
     result_dict = {}
 
-    for i in range(1, 21):
+    for i in range(1, args.onc_max_tests+1):
   
         score_train, score_test, mse_train, mse_test = train_plsr(ncomp=i, 
                                                                   X_train=X_train, 
@@ -198,20 +218,19 @@ def find_optimal_number_components(X_train, y_train, X_test, y_test):
                                                                   X_test=X_test, 
                                                                   y_test=y_test)
 
-        ratio = abs(score_train - score_test)
-
         result_dict[i] = {
             'number_of_components': int(i),
-            'train_test_ratio': ratio,
+            'r2_train_test_ratio': abs(score_train - score_test),
             'score_train': score_train,
             'mse_train': mse_train, 
             'rmse_train': np.sqrt(mse_train),
             'score_test': score_test,
             'mse_test': mse_test,
-            'rmse_test': np.sqrt(mse_test)
+            'rmse_test': np.sqrt(mse_test),
+            'rmse_train_test_ratio': abs(np.sqrt(mse_train) - np.sqrt(mse_test)) 
         }
 
-    df = pd.DataFrame.from_dict(result_dict, orient='index').sort_values('train_test_ratio')
+    df = pd.DataFrame.from_dict(result_dict, orient='index').sort_values('rmse_train_test_ratio')
 
     return df, int(df.iloc[0]['number_of_components'])
 
@@ -219,22 +238,44 @@ def find_optimal_number_components(X_train, y_train, X_test, y_test):
 # --------------------------------------------------
 def variance_threshold_variable_selection(data, y, threshold):
 
-    # Options: f_regression, mutual_info_regression
-
+    args = get_args()
     selector = VarianceThreshold(threshold=threshold)
     selector.fit_transform(data)
-    # selector = SelectFdr(mutual_info_regression, alpha=0.05)
-    # print(selector)
-    # selector.fit_transform(data, y)
     selected_data = data[data.columns[selector.get_support()]]
 
     return selected_data
 
 
 # --------------------------------------------------
-def plsr_component_optimization(df, transcript, rng):
-    args = get_args()
+def create_delta_figure(df, transcript, optimal_components):
     
+    score = df[['number_of_components', 'r2_train_test_ratio', 'rmse_train_test_ratio']]
+    score = score.set_index('number_of_components').melt(ignore_index=False).reset_index()
+    score = score.rename(columns={'variable': 'Metric'})
+
+    remap_dict = {'r2_train_test_ratio': 'R$^2$',
+                'rmse_train_test_ratio': 'RMSE'}
+
+    score['Metric'] = score['Metric'].map(remap_dict)
+
+    sns.relplot(x='number_of_components', 
+                y='value',  
+                hue='Metric',
+                style='Metric',
+                markers=True, 
+                kind='line', 
+                data=score)
+                
+    plt.ylabel('|$\Delta$ train, test|')
+    plt.xlabel('Number of PLSR components')
+    plt.axvline(optimal_components, c='r')
+    plt.savefig(os.path.join(plot_out_dir, '.'.join([transcript, 'png'])), dpi=1000, bbox_inches='tight', facecolor='w', edgecolor='w')
+
+
+# --------------------------------------------------
+def plsr_component_optimization(df, transcript, rng):
+
+    args = get_args()
     
     print(f'[INFO] Running PLSR component optimization: {transcript}.')
     
@@ -253,9 +294,12 @@ def plsr_component_optimization(df, transcript, rng):
 
     # Find optimal number of PLSR components
     df, n_comp = find_optimal_number_components(X_train, y_train, X_test, y_test)
-    print(f'[INFO] Optimal number of components: {n_comp}')
-    df.to_csv('results_var_thresh.csv', index=False)
+    print(f'[RESULT] Optimal number of components: {n_comp}')
+    df.to_csv('.'.join([args.onc_file_name, 'csv']), index=False)
+
+    create_delta_figure(df=df, transcript=transcript, optimal_components=n_comp)
     
+    # Run PLSR with the calculated optimal number of components
     final_score_train, final_score_test, final_mse_train, final_mse_test = train_plsr(n_comp, 
                                                                                       X_train=X_train, 
                                                                                       y_train=y_train, 
