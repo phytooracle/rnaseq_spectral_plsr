@@ -134,6 +134,7 @@ def get_args():
 def create_output_directories(transcript):
 
     args = get_args()
+
     #Define plot/figure output directory
     global plot_out_dir 
     plot_out_dir = os.path.join(args.outdir, args.plot_out_dir, transcript)
@@ -190,7 +191,22 @@ def train_plsr(ncomp, X_train, y_train, X_test, y_test):
     # print('Test R2: %5.3f'  % score_test)
     # print('Test MSE: %5.3f' % mse_test)
 
-    return score_train, score_test, mse_train, mse_test
+    return score_train, score_test, mse_train, mse_test, pls
+
+def save_plsr_model(filename, model):
+    # Save to file in the current working directory
+    
+    with open(filename, 'wb') as file:
+        pickle.dump(model, file)
+
+def open_plsr_model(filename):
+    # Load from file
+    with open(filename, 'rb') as file:
+        model = pickle.load(file)
+
+
+    return model
+
 
 
 # --------------------------------------------------
@@ -212,7 +228,7 @@ def find_optimal_number_components(X_train, y_train, X_test, y_test):
 
     for i in range(1, args.onc_max_tests+1):
   
-        score_train, score_test, mse_train, mse_test = train_plsr(ncomp=i, 
+        score_train, score_test, mse_train, mse_test, model = train_plsr(ncomp=i, 
                                                                   X_train=X_train, 
                                                                   y_train=y_train,
                                                                   X_test=X_test, 
@@ -269,7 +285,31 @@ def create_delta_figure(df, transcript, optimal_components):
     plt.ylabel('|$\Delta$ train, test|')
     plt.xlabel('Number of PLSR components')
     plt.axvline(optimal_components, c='r')
-    plt.savefig(os.path.join(plot_out_dir, '.'.join([transcript, 'png'])), dpi=1000, bbox_inches='tight', facecolor='w', edgecolor='w')
+    plt.savefig(os.path.join(plot_out_dir, '.'.join(['_'.join([transcript, 'delta']), 'png'])), dpi=1000, bbox_inches='tight', facecolor='w', edgecolor='w')
+
+
+# --------------------------------------------------
+def create_score_figure(df, transcript, optimal_components):
+    
+    score = df[['number_of_components', 'score_train', 'score_test']]
+    score = score.set_index('number_of_components').melt(ignore_index=False).reset_index()
+    score = score.rename(columns={'variable': 'Dataset'})
+
+    remap_dict = {'score_train': 'Train',
+                'score_test': 'Test'}
+
+    score['Dataset'] = score['Dataset'].map(remap_dict)
+
+    sns.relplot(x='number_of_components', 
+                y='value', 
+                hue='Dataset', 
+                kind='line', 
+                data=score)
+    plt.axvline(optimal_components, c='r')
+    plt.ylabel('R$^2$')
+    plt.xlabel('Number of PLSR components')
+    plt.axvline(optimal_components, c='r')
+    plt.savefig(os.path.join(plot_out_dir, '.'.join(['_'.join([transcript, 'score']), 'png'])), dpi=1000, bbox_inches='tight', facecolor='w', edgecolor='w')
 
 
 # --------------------------------------------------
@@ -298,13 +338,21 @@ def plsr_component_optimization(df, transcript, rng):
     df.to_csv('.'.join([args.onc_file_name, 'csv']), index=False)
 
     create_delta_figure(df=df, transcript=transcript, optimal_components=n_comp)
+    create_score_figure(df=df, transcript=transcript, optimal_components=n_comp)
     
     # Run PLSR with the calculated optimal number of components
-    final_score_train, final_score_test, final_mse_train, final_mse_test = train_plsr(n_comp, 
+    final_score_train, final_score_test, final_mse_train, final_mse_test, model = train_plsr(n_comp, 
                                                                                       X_train=X_train, 
                                                                                       y_train=y_train, 
                                                                                       X_test=X_test, 
                                                                                       y_test=y_test)
+
+    # Save the optimal PLSR model
+    save_plsr_model(filename=os.path.join(model_out_dir, '.'.join([transcript, "pkl"])), model=model)
+
+    # model = open_plsr_model(filename=os.path.join(model_out_dir, '.'.join([transcript, "pkl"])))
+    # score = model.score(X_test, y_test)
+    # print(score)
 
     print(f'[RESULT] Train R2:{final_score_train}\n[RESULT] Test R2: {final_score_test}')
 
