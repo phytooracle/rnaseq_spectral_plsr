@@ -171,6 +171,26 @@ def create_output_directories(transcript):
 
 
 # --------------------------------------------------
+def extract_spectral_region(X):
+
+    # # Visible
+    # visible_blue_blue_red_edge = X[[str(i) for i in range(400, 500)]]
+    # visible_green_peak = X[[str(i) for i in range(500, 651)]]
+    # visible_red_reflectance_minimum = X[[str(i) for i in range(650, 701)]]
+
+    # # Red edge
+    # red_edge = X[[str(i) for i in range(680, 781)]]
+    
+    # # Near infrared 
+    # near_infrared_red_edge_region = X[[str(i) for i in range(680, 781)]]
+    # near_infrared_nir_plateau = X[[str(i) for i in range(780, 1328)]]
+
+    # # Shortwave infrared
+    # shortwave_infrared_near_swir = X[[str(i) for i in range(1350, 1801)]]
+    # shortwave_infrared_far_swir = X[[str(i) for i in range(1800, 2501)]]
+
+
+# --------------------------------------------------
 def train_plsr(ncomp, X_train, y_train, X_test, y_test):
 
     args = get_args()
