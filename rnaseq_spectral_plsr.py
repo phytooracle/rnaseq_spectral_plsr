@@ -220,7 +220,7 @@ def scale_data(data):
 
 
 # --------------------------------------------------
-def find_optimal_number_components(X_train, y_train, X_test, y_test):
+def find_optimal_number_components(X_train, y_train, X_test, y_test, transcript):
 
     args = get_args()
     # Run PLSR
@@ -245,6 +245,8 @@ def find_optimal_number_components(X_train, y_train, X_test, y_test):
             'rmse_test': np.sqrt(mse_test),
             'rmse_train_test_ratio': abs(np.sqrt(mse_train) - np.sqrt(mse_test)) 
         }
+
+        save_plsr_model(filename=os.path.join(model_out_dir, '.'.join(['_'.join([transcript, str(i)]), "pkl"])), model=model)
 
     df = pd.DataFrame.from_dict(result_dict, orient='index').sort_values('rmse_train_test_ratio')
 
@@ -333,7 +335,7 @@ def plsr_component_optimization(df, transcript, rng):
     X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=rng, test_size=args.test_size)
 
     # Find optimal number of PLSR components
-    df, n_comp = find_optimal_number_components(X_train, y_train, X_test, y_test)
+    df, n_comp = find_optimal_number_components(X_train, y_train, X_test, y_test, transcript=transcript)
     print(f'[RESULT] Optimal number of components: {n_comp}')
     df.to_csv(os.path.join(csv_out_dir, '.'.join(['_'.join([transcript, args.onc_file_name]), 'csv'])), index=False)
 
@@ -348,7 +350,7 @@ def plsr_component_optimization(df, transcript, rng):
                                                                                       y_test=y_test)
 
     # Save the optimal PLSR model
-    save_plsr_model(filename=os.path.join(model_out_dir, '.'.join([transcript, "pkl"])), model=model)
+    save_plsr_model(filename=os.path.join(model_out_dir, '.'.join(['_'.join([transcript, 'final']), "pkl"])), model=model)
 
     # model = open_plsr_model(filename=os.path.join(model_out_dir, '.'.join([transcript, "pkl"])))
     # score = model.score(X_test, y_test)
