@@ -5,3 +5,5 @@ rnaseq_spectral_plsr.simg
 interactive_node_*
 interactive_node.sh
 results_var_thresh.csv
+find_optimal_number_components.csv
+test_plot.ipynb
