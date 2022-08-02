@@ -335,7 +335,7 @@ def plsr_component_optimization(df, transcript, rng):
     # Find optimal number of PLSR components
     df, n_comp = find_optimal_number_components(X_train, y_train, X_test, y_test)
     print(f'[RESULT] Optimal number of components: {n_comp}')
-    df.to_csv('.'.join([args.onc_file_name, 'csv']), index=False)
+    df.to_csv(os.path.join(csv_out_dir, '.'.join(['_'.join([transcript, args.onc_file_name]), 'csv'])), index=False)
 
     create_delta_figure(df=df, transcript=transcript, optimal_components=n_comp)
     create_score_figure(df=df, transcript=transcript, optimal_components=n_comp)
