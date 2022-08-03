@@ -252,8 +252,14 @@ def find_optimal_number_components(X_train, y_train, X_test, y_test, transcript)
         save_plsr_model(filename=os.path.join(model_out_dir, '.'.join(['_'.join([transcript, str(i)]), "pkl"])), model=model)
 
     df = pd.DataFrame.from_dict(result_dict, orient='index').sort_values('rmse_train_test_ratio')
+    selected_components = int(df.iloc[0]['number_of_components'])  
 
-    return df, int(df.iloc[0]['number_of_components'])
+    df['transcript'] = transcript
+    df = df.set_index('number_of_components')
+    df['selected'] = False
+    df.at[selected_components, 'selected'] = True
+
+    return df.reset_index(), selected_components
 
 
 # --------------------------------------------------
