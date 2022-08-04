@@ -18,14 +18,19 @@ from sklearn.cross_decomposition import PLSRegression
 from sklearn.model_selection import cross_val_predict
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
+from sklearn.utils import shuffle
+from sklearn.model_selection import permutation_test_score
 import matplotlib.collections as collections
 import pickle
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.feature_selection import SelectFromModel
-from sklearn.feature_selection import RFE
-from sklearn.linear_model import LogisticRegression
+# from sklearn.ensemble import RandomForestClassifier
+# from sklearn.feature_selection import SelectFromModel
+# from sklearn.feature_selection import RFE
+# from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
-from sklearn.feature_selection import VarianceThreshold, f_regression, mutual_info_regression, SelectFdr
+from sklearn.feature_selection import VarianceThreshold#, f_regression, mutual_info_regression, SelectFdr
+from statistics import mean
+
+
 
 
 # --------------------------------------------------
@@ -126,7 +131,14 @@ def get_args():
                         metavar='int',
                         type=int,
                         default=30)
-                        
+
+    parser.add_argument('-np',
+                        '--number_permutations',
+                        help='Number of permutations to run',
+                        metavar='int',
+                        type=int,
+                        default=1000)
+
     return parser.parse_args()
 
 
@@ -161,13 +173,13 @@ def create_output_directories(transcript):
         except OSError:
             pass
     
-    global permutation_out_dir
-    permutation_out_dir = os.path.join(args.outdir, args.permutation_out_dir, transcript)
-    if not os.path.isdir(permutation_out_dir):
-        try:
-            os.makedirs(permutation_out_dir)
-        except OSError:
-            pass
+    # global permutation_out_dir
+    # permutation_out_dir = os.path.join(args.outdir, args.permutation_out_dir, transcript)
+    # if not os.path.isdir(permutation_out_dir):
+    #     try:
+    #         os.makedirs(permutation_out_dir)
+    #     except OSError:
+    #         pass
 
 
 # --------------------------------------------------
@@ -236,17 +248,26 @@ def find_optimal_number_components(X_train, y_train, X_test, y_test, transcript)
                                                                   y_train=y_train,
                                                                   X_test=X_test, 
                                                                   y_test=y_test)
+        
+        mean_permutation_score, mean_permutation_mse, mean_permutation_rmse = run_permutation_test(X_test=X_test, y_test=y_test, model=model)
 
         result_dict[i] = {
             'number_of_components': int(i),
-            'r2_train_test_ratio': abs(score_train - score_test),
+
+            'score_train_test_ratio': abs(score_train - score_test),
             'score_train': score_train,
-            'mse_train': mse_train, 
-            'rmse_train': np.sqrt(mse_train),
             'score_test': score_test,
-            'mse_test': mse_test,
+            'score_test_mean_permutation': mean_permutation_score,
+
+            'rmse_train_test_ratio': abs(np.sqrt(mse_train) - np.sqrt(mse_test)),
+            'rmse_train': np.sqrt(mse_train),
             'rmse_test': np.sqrt(mse_test),
-            'rmse_train_test_ratio': abs(np.sqrt(mse_train) - np.sqrt(mse_test)) 
+            'rmse_test_mean_permutation': mean_permutation_rmse,
+
+            'mse_train_test_ratio': abs(mse_train - mse_test),
+            'mse_train': mse_train, 
+            'mse_test': mse_test,
+            'mse_test_mean_permutation': mean_permutation_mse
         }
 
         save_plsr_model(filename=os.path.join(model_out_dir, '.'.join(['_'.join([transcript, str(i)]), "pkl"])), model=model)
@@ -263,12 +284,17 @@ def find_optimal_number_components(X_train, y_train, X_test, y_test, transcript)
 
 
 # --------------------------------------------------
-def variance_threshold_variable_selection(data, y, threshold):
+def variance_threshold_variable_selection(data, y, threshold, transcript):
 
     args = get_args()
     selector = VarianceThreshold(threshold=threshold)
     selector.fit_transform(data)
     selected_data = data[data.columns[selector.get_support()]]
+    
+    selected_bands = pd.DataFrame()
+    selected_bands['bands'] = selector.get_feature_names_out()
+
+    selected_bands.to_csv(os.path.join(csv_out_dir, '.'.join(['_'.join([transcript, 'selected_bands']), 'csv'])), index=False)
 
     return selected_data
 
@@ -276,11 +302,11 @@ def variance_threshold_variable_selection(data, y, threshold):
 # --------------------------------------------------
 def create_delta_figure(df, transcript, optimal_components):
     
-    score = df[['number_of_components', 'r2_train_test_ratio', 'rmse_train_test_ratio']]
+    score = df[['number_of_components', 'score_train_test_ratio', 'rmse_train_test_ratio']]
     score = score.set_index('number_of_components').melt(ignore_index=False).reset_index()
     score = score.rename(columns={'variable': 'Metric'})
 
-    remap_dict = {'r2_train_test_ratio': 'R$^2$',
+    remap_dict = {'score_train_test_ratio': 'R$^2$',
                 'rmse_train_test_ratio': 'RMSE'}
 
     score['Metric'] = score['Metric'].map(remap_dict)
@@ -324,6 +350,45 @@ def create_score_figure(df, transcript, optimal_components):
 
 
 # --------------------------------------------------
+def run_permutation_test(X_test, y_test, model):
+
+    args = get_args()
+    # Run permutation 
+    cnt = 0
+    permutation_score_list = []
+    permutation_mse_list = []
+    permutation_rmse_list = []
+
+    for i in range(1, args.number_permutations+1):
+        
+        shuffled_X_test = shuffle(X_test)#, random_state=args.random_number_seed)
+        # model = open_plsr_model(filename=os.path.join(model_out_dir, '.'.join(['_'.join([transcript, 'final']), "pkl"])))
+        permutation_score_test = model.score(shuffled_X_test, y_test)
+        permutation_mse_test = mean_squared_error(y_test, model.predict(shuffled_X_test))
+        permutation_rmse_test = np.sqrt(permutation_mse_test)
+
+        permutation_score_list.append(permutation_score_test)
+        permutation_mse_list.append(permutation_mse_test)
+        permutation_rmse_list.append(permutation_rmse_test)
+
+    mean_permutation_score = mean(permutation_score_list)
+    mean_permutation_mse = mean(permutation_mse_list)
+    mean_permutation_rmse = mean(permutation_rmse_list)
+    # print(f'[RESULT] Permutation test R2: {mean_permutation_score}')
+
+    return mean_permutation_score, mean_permutation_mse, mean_permutation_rmse
+
+
+# --------------------------------------------------
+def get_derivative(X):
+
+    X1 = savgol_filter(X, 11, polyorder = 2, deriv=1)
+    X2 = savgol_filter(X, 13, polyorder = 2,deriv=2)
+
+    return X1, X2
+
+
+# --------------------------------------------------
 def plsr_component_optimization(df, transcript, rng):
 
     args = get_args()
@@ -336,7 +401,7 @@ def plsr_component_optimization(df, transcript, rng):
 
     # Scale data
     X = scale_data(X)
-    X = variance_threshold_variable_selection(data=X, y=y, threshold=args.variance_threshold)
+    X = variance_threshold_variable_selection(data=X, y=y, threshold=args.variance_threshold, transcript=transcript)
     print(f'[INFO] Variables selected: {len(X.columns)}')
     print('[INFO] Scaling data using StandardScaler.')
 
@@ -357,15 +422,12 @@ def plsr_component_optimization(df, transcript, rng):
                                                                                       y_train=y_train, 
                                                                                       X_test=X_test, 
                                                                                       y_test=y_test)
-
+    
     # Save the optimal PLSR model
     save_plsr_model(filename=os.path.join(model_out_dir, '.'.join(['_'.join([transcript, 'final']), "pkl"])), model=model)
-
-    # model = open_plsr_model(filename=os.path.join(model_out_dir, '.'.join([transcript, "pkl"])))
-    # score = model.score(X_test, y_test)
-    # print(score)
-
     print(f'[RESULT] Train R2:{final_score_train}\n[RESULT] Test R2: {final_score_test}')
+
+    
 
 
 # --------------------------------------------------
