@@ -28,9 +28,13 @@ RUN apt-get install -y wget \
                        libc6-dev \
                        liblzma-dev
 
-RUN wget https://www.python.org/ftp/python/3.9.10/Python-3.9.10.tgz
-RUN tar -xzf Python-3.9.10.tgz
-RUN cd Python-3.9.10/ && ./configure --with-ensurepip=install && make && make install
+# RUN wget https://www.python.org/ftp/python/3.9.10/Python-3.9.10.tgz
+# RUN tar -xzf Python-3.9.10.tgz
+# RUN cd Python-3.9.10/ && ./configure --with-ensurepip=install && make && make install
+
+RUN wget https://www.python.org/ftp/python/3.10.4/Python-3.10.4.tgz
+RUN tar -xzf Python-3.10.4.tgz
+RUN cd Python-3.10.4/ && ./configure --with-ensurepip=install && make && make install
 
 RUN apt-get update
 RUN pip3 install -r /opt/requirements.txt
