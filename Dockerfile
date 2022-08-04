@@ -41,4 +41,4 @@ RUN pip3 install -r /opt/requirements.txt
 RUN apt-get install -y locales && locale-gen en_US.UTF-8
 ENV LANG='en_US.UTF-8' LANGUAGE='en_US:en' LC_ALL='en_US.UTF-8'
 
-ENTRYPOINT [ "/usr/local/bin/python3.9", "/opt/rnaseq_spectral_plsr.py" ]
+ENTRYPOINT [ "/usr/local/bin/python3.10", "/opt/rnaseq_spectral_plsr.py" ]
