@@ -362,10 +362,10 @@ def run_permutation_test(X_test, y_test, model):
 
     for i in range(1, args.number_permutations+1):
         
-        shuffled_X_test = shuffle(X_test)#, random_state=args.random_number_seed)
+        shuffled_y_test = shuffle(y_test)#, random_state=args.random_number_seed)
         # model = open_plsr_model(filename=os.path.join(model_out_dir, '.'.join(['_'.join([transcript, 'final']), "pkl"])))
-        permutation_score_test = model.score(shuffled_X_test, y_test)
-        permutation_mse_test = mean_squared_error(y_test, model.predict(shuffled_X_test))
+        permutation_score_test = model.score(X_test, shuffled_y_test)
+        permutation_mse_test = mean_squared_error(shuffled_y_test, model.predict(X_test))
         permutation_rmse_test = np.sqrt(permutation_mse_test)
 
         permutation_score_list.append(permutation_score_test)
