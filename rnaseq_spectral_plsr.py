@@ -20,6 +20,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
 from sklearn.utils import shuffle
 from sklearn.model_selection import permutation_test_score
+from scipy.signal import savgol_filter
 import matplotlib.collections as collections
 import pickle
 # from sklearn.ensemble import RandomForestClassifier
@@ -254,17 +255,17 @@ def find_optimal_number_components(X_train, y_train, X_test, y_test, transcript)
         result_dict[i] = {
             'number_of_components': int(i),
 
-            'score_train_test_ratio': abs(score_train - score_test),
+            'score_train_test_delta': abs(score_train - score_test),
             'score_train': score_train,
             'score_test': score_test,
             'score_test_mean_permutation': mean_permutation_score,
 
-            'rmse_train_test_ratio': abs(np.sqrt(mse_train) - np.sqrt(mse_test)),
+            'rmse_train_test_delta': abs(np.sqrt(mse_train) - np.sqrt(mse_test)),
             'rmse_train': np.sqrt(mse_train),
             'rmse_test': np.sqrt(mse_test),
             'rmse_test_mean_permutation': mean_permutation_rmse,
 
-            'mse_train_test_ratio': abs(mse_train - mse_test),
+            'mse_train_test_delta': abs(mse_train - mse_test),
             'mse_train': mse_train, 
             'mse_test': mse_test,
             'mse_test_mean_permutation': mean_permutation_mse
@@ -272,7 +273,7 @@ def find_optimal_number_components(X_train, y_train, X_test, y_test, transcript)
 
         save_plsr_model(filename=os.path.join(model_out_dir, '.'.join(['_'.join([transcript, str(i)]), "pkl"])), model=model)
 
-    df = pd.DataFrame.from_dict(result_dict, orient='index').sort_values('rmse_train_test_ratio')
+    df = pd.DataFrame.from_dict(result_dict, orient='index').sort_values('rmse_train_test_delta')
     selected_components = int(df.iloc[0]['number_of_components'])  
 
     df['transcript'] = transcript
@@ -302,12 +303,12 @@ def variance_threshold_variable_selection(data, y, threshold, transcript):
 # --------------------------------------------------
 def create_delta_figure(df, transcript, optimal_components):
     
-    score = df[['number_of_components', 'score_train_test_ratio', 'rmse_train_test_ratio']]
+    score = df[['number_of_components', 'score_train_test_delta', 'rmse_train_test_delta']]
     score = score.set_index('number_of_components').melt(ignore_index=False).reset_index()
     score = score.rename(columns={'variable': 'Metric'})
 
-    remap_dict = {'score_train_test_ratio': 'R$^2$',
-                'rmse_train_test_ratio': 'RMSE'}
+    remap_dict = {'score_train_test_delta': 'R$^2$',
+                'rmse_train_test_delta': 'RMSE'}
 
     score['Metric'] = score['Metric'].map(remap_dict)
 
@@ -399,7 +400,10 @@ def plsr_component_optimization(df, transcript, rng):
     y = df[[transcript]]
     X = df[[str(i) for i in range(args.min_wavelength, args.max_wavelength+1)]]
 
-    # Scale data
+    # Calculate derivatives, scale data, and apply variance threshold
+    first_deriv, second_deriv = get_derivative(X)
+    X = pd.DataFrame(first_deriv, columns = X.columns)
+    # print(X)
     X = scale_data(X)
     X = variance_threshold_variable_selection(data=X, y=y, threshold=args.variance_threshold, transcript=transcript)
     print(f'[INFO] Variables selected: {len(X.columns)}')
