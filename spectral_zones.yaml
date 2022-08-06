@@ -1,30 +1,4 @@
 ---
-# visible:
-#   blue/blue-green edge: [400, 499]
-#   green peak: [500, 649]
-#   red reflectance minimum: [650, 700]
-
-# red_edge:
-#   red_edge: [680, 780]
-
-# near_infrared:
-#   red_edge: [680, 780]
-#   nir_plateau: [780, 1327]
-
-# shortwave_infrared:
-#   near_swir: [1350, 1800]
-#   far_swir: [1800, 2500]
-
-
-# blue_blue-green_edge: [400, 499]
-# green_peak: [500, 649]
-# red_reflectance_minimum: [650, 700]
-# red_edge: [680, 780]
-# nir_plateau: [780, 1327]
-# near_swir: [1350, 1800]
-# far_swir: [1800, 2500]
-
-
 VBBGE: [400, 499]
 VGP: [500, 649]
 VRRM: [650, 700]
