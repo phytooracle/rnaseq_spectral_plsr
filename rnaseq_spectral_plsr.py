@@ -147,7 +147,7 @@ def get_args():
                         help='Path to YAML file containing spectral zones',
                         metavar='str',
                         type=str,
-                        default='spectral_zones.yaml')
+                        default='/opt/spectral_zones.yaml')
 
     return parser.parse_args()
 
