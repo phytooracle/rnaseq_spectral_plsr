@@ -343,7 +343,7 @@ def find_optimal_number_components(X, y, transcript): #(X_train, y_train, X_test
                                                                     X_test=X_test, 
                                                                     y_test=y_test)
             
-            # mean_permutation_score, mean_permutation_mse, mean_permutation_rmse = run_permutation_test(X_test=X_test, y_test=y_test, model=model)
+            mean_permutation_score, mean_permutation_mse, mean_permutation_rmse = run_permutation_test(X_test=X_test, y_test=y_test, model=model)
 
             result_dict[cnt] = {
                 'zones': ' '.join(zones),
@@ -352,17 +352,17 @@ def find_optimal_number_components(X, y, transcript): #(X_train, y_train, X_test
                 'score_train_test_delta': abs(score_train - score_test),
                 'score_train': score_train,
                 'score_test': score_test,
-                # 'score_test_mean_permutation': mean_permutation_score,
+                'score_test_mean_permutation': mean_permutation_score,
 
                 'rmse_train_test_delta': abs(np.sqrt(mse_train) - np.sqrt(mse_test)),
                 'rmse_train': np.sqrt(mse_train),
                 'rmse_test': np.sqrt(mse_test),
-                # 'rmse_test_mean_permutation': mean_permutation_rmse,
+                'rmse_test_mean_permutation': mean_permutation_rmse,
 
                 'mse_train_test_delta': abs(mse_train - mse_test),
                 'mse_train': mse_train, 
                 'mse_test': mse_test,
-                # 'mse_test_mean_permutation': mean_permutation_mse
+                'mse_test_mean_permutation': mean_permutation_mse
             }
 
             if not os.path.isdir(os.path.join(model_out_dir, zones_output)):
