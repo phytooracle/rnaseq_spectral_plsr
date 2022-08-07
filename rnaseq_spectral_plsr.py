@@ -142,7 +142,7 @@ def get_args():
                         metavar='int',
                         type=int,
                         # action='store_true')
-                        default=0)
+                        default=30)
 
     parser.add_argument('-y',
                         '--yaml_path',
