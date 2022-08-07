@@ -6,7 +6,8 @@ Purpose: Partial least squares regression (PLSR) on gene expression (response va
 """
 
 import argparse
-import os 
+import os
+import re 
 import sys
 from sys import stdout
 import pandas as pd
@@ -140,7 +141,8 @@ def get_args():
                         help='Number of permutations to run',
                         metavar='int',
                         type=int,
-                        default=1000)
+                        # action='store_true')
+                        default=0)
 
     parser.add_argument('-y',
                         '--yaml_path',
@@ -148,6 +150,21 @@ def get_args():
                         metavar='str',
                         type=str,
                         default='/opt/spectral_zones.yaml')
+
+    parser.add_argument('-sam',
+                        '--save_all_models',
+                        help='Save all models.',
+                        action='store_true')
+
+    parser.add_argument('-sap',
+                        '--save_all_plots',
+                        help='Save all plots.',
+                        action='store_true')
+
+    # parser.add_argument('-per',
+    #                     '--permutations',
+    #                     help='Run permutations.',
+    #                     action='store_true')
 
     return parser.parse_args()
 
@@ -342,42 +359,75 @@ def find_optimal_number_components(X, y, transcript): #(X_train, y_train, X_test
                                                                     y_train=y_train,
                                                                     X_test=X_test, 
                                                                     y_test=y_test)
-            
-            mean_permutation_score, mean_permutation_mse, mean_permutation_rmse = run_permutation_test(X_test=X_test, y_test=y_test, model=model)
+            if args.number_permutations > 0:
 
-            result_dict[cnt] = {
-                'zones': ' '.join(zones),
-                'number_of_components': int(i),
+                mean_permutation_score, mean_permutation_mse, mean_permutation_rmse = run_permutation_test(X_test=X_test, y_test=y_test, model=model)
 
-                'score_train_test_delta': abs(score_train - score_test),
-                'score_train': score_train,
-                'score_test': score_test,
-                'score_test_mean_permutation': mean_permutation_score,
+                result_dict[cnt] = {
+                    'zones': ' '.join(zones),
+                    'number_of_components': int(i),
 
-                'rmse_train_test_delta': abs(np.sqrt(mse_train) - np.sqrt(mse_test)),
-                'rmse_train': np.sqrt(mse_train),
-                'rmse_test': np.sqrt(mse_test),
-                'rmse_test_mean_permutation': mean_permutation_rmse,
+                    'score_train_test_delta': abs(score_train - score_test),
+                    'score_train': score_train,
+                    'score_test': score_test,
+                    'score_test_mean_permutation': mean_permutation_score,
 
-                'mse_train_test_delta': abs(mse_train - mse_test),
-                'mse_train': mse_train, 
-                'mse_test': mse_test,
-                'mse_test_mean_permutation': mean_permutation_mse
-            }
+                    'rmse_train_test_delta': abs(np.sqrt(mse_train) - np.sqrt(mse_test)),
+                    'rmse_train': np.sqrt(mse_train),
+                    'rmse_test': np.sqrt(mse_test),
+                    'rmse_test_mean_permutation': mean_permutation_rmse,
 
-            if not os.path.isdir(os.path.join(model_out_dir, zones_output)):
-                os.makedirs(os.path.join(model_out_dir, zones_output))
+                    'mse_train_test_delta': abs(mse_train - mse_test),
+                    'mse_train': mse_train, 
+                    'mse_test': mse_test,
+                    'mse_test_mean_permutation': mean_permutation_mse
+                }
 
-            save_plsr_model(filename=os.path.join(model_out_dir, zones_output, '.'.join(['_'.join([transcript, str(i)]), "pkl"])), model=model)
+            else: 
+
+                result_dict[cnt] = {
+                    'zones': ' '.join(zones),
+                    'number_of_components': int(i),
+
+                    'score_train_test_delta': abs(score_train - score_test),
+                    'score_train': score_train,
+                    'score_test': score_test,
+                    # 'score_test_mean_permutation': mean_permutation_score,
+
+                    'rmse_train_test_delta': abs(np.sqrt(mse_train) - np.sqrt(mse_test)),
+                    'rmse_train': np.sqrt(mse_train),
+                    'rmse_test': np.sqrt(mse_test),
+                    # 'rmse_test_mean_permutation': mean_permutation_rmse,
+
+                    'mse_train_test_delta': abs(mse_train - mse_test),
+                    'mse_train': mse_train, 
+                    'mse_test': mse_test,
+                    # 'mse_test_mean_permutation': mean_permutation_mse
+                }
+
+
+
+            if args.save_all_models:
+
+                if not os.path.isdir(os.path.join(model_out_dir, zones_output)):
+                    os.makedirs(os.path.join(model_out_dir, zones_output))
+
+                save_plsr_model(filename=os.path.join(model_out_dir, zones_output, '.'.join(['_'.join([transcript, str(i)]), "pkl"])), model=model)
 
     result_df = pd.DataFrame.from_dict(result_dict, orient='index').sort_values('rmse_train_test_delta')
     selected_components = int(result_df.iloc[0]['number_of_components'])  
     selected_zone = result_df.iloc[0]['zones']
+    zones_output = '_'.join(selected_zone.split(' '))
 
     result_df['transcript'] = transcript
     result_df = result_df.set_index(['zones', 'number_of_components'])
     result_df['selected'] = False
     result_df.at[(selected_zone, selected_components), 'selected'] = True
+
+    if not os.path.isdir(os.path.join(csv_out_dir, zones_output)):
+        os.makedirs(os.path.join(csv_out_dir, zones_output))
+        
+    result_df[result_df['selected']==True].to_csv(os.path.join(csv_out_dir, zones_output, '.'.join(['_'.join([transcript, 'selected']), 'csv'])), index=True)
 
     return result_df.reset_index(), selected_components, selected_zone, combo_df
 
@@ -399,19 +449,56 @@ def variance_threshold_variable_selection(data, y, threshold, transcript):
 
 
 # --------------------------------------------------
-def create_delta_figure(df, transcript, combo_df):
+def create_delta_figure(df, transcript, combo_df, n_comp, selected_zone):
 
-    for index, row in combo_df.iterrows():
-        # cnt += 1
-        zones = list(row['combination'])
+    args = get_args()
+
+    if args.save_all_plots:
+
+        for index, row in combo_df.iterrows():
+            # cnt += 1
+            zones = list(row['combination'])
+            zones_output = '_'.join(zones)
+            zones = ' '.join(zones)
+            zone_df = df[df['zones']==zones]
+
+            zone_df = zone_df.sort_values('rmse_train_test_delta')
+            optimal_components = int(zone_df.iloc[0]['number_of_components'])
+
+            score = zone_df[['number_of_components', 'score_train_test_delta', 'rmse_train_test_delta']]
+            score = score.set_index('number_of_components').melt(ignore_index=False).reset_index()
+            score = score.rename(columns={'variable': 'Metric'})
+
+            remap_dict = {'score_train_test_delta': 'R$^2$',
+                        'rmse_train_test_delta': 'RMSE'}
+
+            score['Metric'] = score['Metric'].map(remap_dict)
+
+            if not os.path.isdir(os.path.join(plot_out_dir, zones_output)):
+                os.makedirs(os.path.join(plot_out_dir, zones_output))
+
+            sns.relplot(x='number_of_components', 
+                        y='value',  
+                        hue='Metric',
+                        style='Metric',
+                        markers=True, 
+                        kind='line', 
+                        data=score)
+                        
+            plt.ylabel('|$\Delta$ train, test|')
+            plt.xlabel('Number of PLSR components')
+            plt.axvline(optimal_components, c='r')
+            plt.savefig(os.path.join(plot_out_dir, zones_output, '.'.join(['_'.join([transcript, 'delta']), 'png'])), dpi=1000, bbox_inches='tight', facecolor='w', edgecolor='w')
+            # plt.clf()
+            plt.close('all')
+    else:
+        zones = selected_zone.split(' ')
+        print(selected_zone, type(selected_zone))
         zones_output = '_'.join(zones)
-        zones = ' '.join(zones)
-        zone_df = df[df['zones']==zones]
+        
+        df = df[df['zones']==selected_zone]
 
-        zone_df = zone_df.sort_values('rmse_train_test_delta')
-        optimal_components = int(zone_df.iloc[0]['number_of_components'])
-
-        score = zone_df[['number_of_components', 'score_train_test_delta', 'rmse_train_test_delta']]
+        score = df[['number_of_components', 'score_train_test_delta', 'rmse_train_test_delta']]
         score = score.set_index('number_of_components').melt(ignore_index=False).reset_index()
         score = score.rename(columns={'variable': 'Metric'})
 
@@ -433,25 +520,61 @@ def create_delta_figure(df, transcript, combo_df):
                     
         plt.ylabel('|$\Delta$ train, test|')
         plt.xlabel('Number of PLSR components')
-        plt.axvline(optimal_components, c='r')
+        plt.axvline(n_comp, c='r')
         plt.savefig(os.path.join(plot_out_dir, zones_output, '.'.join(['_'.join([transcript, 'delta']), 'png'])), dpi=1000, bbox_inches='tight', facecolor='w', edgecolor='w')
         # plt.clf()
         plt.close('all')
 
+
 # --------------------------------------------------
-def create_score_figure(df, transcript, combo_df):
+def create_score_figure(df, transcript, combo_df, n_comp, selected_zone):
 
-    for index, row in combo_df.iterrows():
-        # cnt += 1
-        zones = list(row['combination'])
+    args = get_args()
+
+    if args.save_all_plots:
+
+        for index, row in combo_df.iterrows():
+            # cnt += 1
+            zones = list(row['combination'])
+            zones_output = '_'.join(zones)
+            zones = ' '.join(zones)
+            zone_df = df[df['zones']==zones]
+
+            zone_df = zone_df.sort_values('rmse_train_test_delta')
+            optimal_components = int(zone_df.iloc[0]['number_of_components'])
+
+            score = zone_df[['number_of_components', 'score_train', 'score_test']]
+            score = score.set_index('number_of_components').melt(ignore_index=False).reset_index()
+            score = score.rename(columns={'variable': 'Dataset'})
+
+            remap_dict = {'score_train': 'Train',
+                        'score_test': 'Test'}
+
+            score['Dataset'] = score['Dataset'].map(remap_dict)
+
+            if not os.path.isdir(os.path.join(plot_out_dir, zones_output)):
+                os.makedirs(os.path.join(plot_out_dir, zones_output))
+
+            sns.relplot(x='number_of_components', 
+                        y='value', 
+                        hue='Dataset', 
+                        kind='line', 
+                        data=score)
+            plt.axvline(optimal_components, c='r')
+            plt.ylabel('R$^2$')
+            plt.xlabel('Number of PLSR components')
+            plt.axvline(optimal_components, c='r')
+            plt.savefig(os.path.join(plot_out_dir, zones_output, '.'.join(['_'.join([transcript, 'score']), 'png'])), dpi=1000, bbox_inches='tight', facecolor='w', edgecolor='w')
+            # plt.clf()
+            plt.close('all')
+    else:
+        zones = selected_zone.split(' ')
+        print(selected_zone, type(selected_zone))
         zones_output = '_'.join(zones)
-        zones = ' '.join(zones)
-        zone_df = df[df['zones']==zones]
 
-        zone_df = zone_df.sort_values('rmse_train_test_delta')
-        optimal_components = int(zone_df.iloc[0]['number_of_components'])
+        df = df[df['zones']==selected_zone]
 
-        score = zone_df[['number_of_components', 'score_train', 'score_test']]
+        score = df[['number_of_components', 'score_train', 'score_test']]
         score = score.set_index('number_of_components').melt(ignore_index=False).reset_index()
         score = score.rename(columns={'variable': 'Dataset'})
 
@@ -468,13 +591,14 @@ def create_score_figure(df, transcript, combo_df):
                     hue='Dataset', 
                     kind='line', 
                     data=score)
-        plt.axvline(optimal_components, c='r')
+        # plt.axvline(n_comp, c='r')
         plt.ylabel('R$^2$')
         plt.xlabel('Number of PLSR components')
-        plt.axvline(optimal_components, c='r')
+        plt.axvline(n_comp, c='r')
         plt.savefig(os.path.join(plot_out_dir, zones_output, '.'.join(['_'.join([transcript, 'score']), 'png'])), dpi=1000, bbox_inches='tight', facecolor='w', edgecolor='w')
         # plt.clf()
         plt.close('all')
+
 
 
 # --------------------------------------------------
@@ -541,8 +665,8 @@ def plsr_component_optimization(df, transcript, rng):
     df.to_csv(os.path.join(csv_out_dir, '.'.join(['_'.join([transcript, args.onc_file_name]), 'csv'])), index=False)
 
     # Generate & save plots
-    create_delta_figure(df=df, transcript=transcript, combo_df=combo_df)
-    create_score_figure(df=df, transcript=transcript, combo_df=combo_df)
+    create_delta_figure(df=df, transcript=transcript, combo_df=combo_df, n_comp=n_comp, selected_zone=selected_zone)
+    create_score_figure(df=df, transcript=transcript, combo_df=combo_df, n_comp=n_comp, selected_zone=selected_zone)
     
     # # Run PLSR with the calculated optimal number of components
     # final_score_train, final_score_test, final_mse_train, final_mse_test, model = train_plsr(n_comp, 
