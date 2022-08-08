@@ -484,7 +484,7 @@ def create_delta_figure(df, transcript, combo_df, n_comp, selected_zone):
                         markers=True, 
                         kind='line', 
                         data=score)
-                        
+            plt.title(zones)
             plt.ylabel('|$\Delta$ train, test|')
             plt.xlabel('Number of PLSR components')
             plt.axvline(optimal_components, c='r')
@@ -517,7 +517,7 @@ def create_delta_figure(df, transcript, combo_df, n_comp, selected_zone):
                     markers=True, 
                     kind='line', 
                     data=score)
-                    
+        plt.title(zones)
         plt.ylabel('|$\Delta$ train, test|')
         plt.xlabel('Number of PLSR components')
         plt.axvline(n_comp, c='r')
@@ -560,6 +560,7 @@ def create_score_figure(df, transcript, combo_df, n_comp, selected_zone):
                         hue='Dataset', 
                         kind='line', 
                         data=score)
+            plt.title(zones)
             plt.axvline(optimal_components, c='r')
             plt.ylabel('R$^2$')
             plt.xlabel('Number of PLSR components')
@@ -592,6 +593,7 @@ def create_score_figure(df, transcript, combo_df, n_comp, selected_zone):
                     kind='line', 
                     data=score)
         # plt.axvline(n_comp, c='r')
+        plt.title(zones)
         plt.ylabel('R$^2$')
         plt.xlabel('Number of PLSR components')
         plt.axvline(n_comp, c='r')
@@ -644,7 +646,8 @@ def get_derivative(X):
 def plsr_component_optimization(df, transcript, rng):
 
     args = get_args()
-    
+    print(f'[INFO] Range of components optimization: [{args.onc_max_tests}]')
+    print(f'[INFO] Number of permutations set to {args.number_permutations}')
     print(f'[INFO] Running PLSR component optimization: {transcript}.')
     
     # Prepare explanatory/independent & response/dependent variables
