@@ -586,6 +586,67 @@ def get_spectral_zone_combined_wavelength_dataframe(yaml_dict, combinations_list
 #     return result_df.reset_index(), optimal_components, selected_zone, combo_df
 
 
+# def find_optimal_number_components(X, y, transcript):
+#     args = get_args()
+#     result_dict = {}
+    
+#     optimal_components = None
+#     min_rmse = float('inf')
+#     combinations_list, yaml_dict = get_spectral_zone_combinations(yaml_path=args.yaml_path)
+#     combo_df = get_spectral_zone_combined_wavelength_dataframe(yaml_dict=yaml_dict, combinations_list=combinations_list) 
+#     # Iterate over possible numbers of components
+#     for ncomp in range(2, args.onc_max_tests + 1):
+#         rmse_sum = 0.0
+#         mae_sum = 0.0
+#         r2_sum = 0.0
+        
+#         # Iterate over each sample and leave it out for testing
+#         for i in range(X.shape[0]):
+#             X_train = np.delete(X, i, axis=0)
+#             y_train = np.delete(y, i)
+#             X_test = X[i:i+1]  # Use only one sample for testing
+#             y_test = y[i:i+1].values[0]
+
+#             score_train, score_test, mse_train, mse_test, pls = train_plsr(ncomp=ncomp, X_train=X_train, y_train=y_train, X_test=X_test, y_test=y_test)
+
+#             rmse_sum += np.sqrt(mse_test)
+#             # mae_sum += mean_absolute_error(y_test, pls.predict(X_test))
+#             # r2_sum += r2_score(y_test, pls.predict(X_test))
+
+#         # Calculate the average RMSE, MAE, and R2 for the current number of components
+#         avg_rmse = rmse_sum / X.shape[0]
+#         # avg_mae = mae_sum / X.shape[0]
+#         # avg_r2 = r2_sum / X.shape[0]
+
+#         result_dict[ncomp] = {
+#             'zones': 'Full',
+#             'number_of_components': ncomp,
+#             'rmse_avg': avg_rmse,
+#             # 'mae_avg': avg_mae,
+#             # 'r2_avg': avg_r2
+#         }
+
+#         # Update the optimal number of components if we find a better one
+#         if avg_rmse < min_rmse:
+#             min_rmse = avg_rmse
+#             optimal_components = ncomp
+
+#     result_df = pd.DataFrame.from_dict(result_dict, orient='index').sort_values('rmse_avg')
+#     selected_zone = result_df.iloc[0]['zones']
+#     zones_output = '_'.join(selected_zone.split(' '))
+
+#     result_df['transcript'] = transcript.replace('Gh_', 'Gohir.')
+#     result_df = result_df.set_index(['zones', 'number_of_components'])
+#     result_df['selected'] = False
+#     result_df.at[(selected_zone, optimal_components), 'selected'] = True
+
+#     if not os.path.isdir(os.path.join(csv_out_dir, zones_output)):
+#         os.makedirs(os.path.join(csv_out_dir, zones_output))
+
+#     result_df[result_df['selected'] == True].to_csv(os.path.join(csv_out_dir, zones_output, '.'.join(['_'.join([transcript, 'selected']), 'csv'])), index=True)
+
+#     return result_df.reset_index(), optimal_components, selected_zone, combo_df
+
 def find_optimal_number_components(X, y, transcript):
     args = get_args()
     result_dict = {}
@@ -594,11 +655,13 @@ def find_optimal_number_components(X, y, transcript):
     min_rmse = float('inf')
     combinations_list, yaml_dict = get_spectral_zone_combinations(yaml_path=args.yaml_path)
     combo_df = get_spectral_zone_combined_wavelength_dataframe(yaml_dict=yaml_dict, combinations_list=combinations_list) 
+
+    # Calculate the range of the target variable
+    y_range = np.max(y) - np.min(y)
+
     # Iterate over possible numbers of components
     for ncomp in range(2, args.onc_max_tests + 1):
         rmse_sum = 0.0
-        mae_sum = 0.0
-        r2_sum = 0.0
         
         # Iterate over each sample and leave it out for testing
         for i in range(X.shape[0]):
@@ -610,20 +673,18 @@ def find_optimal_number_components(X, y, transcript):
             score_train, score_test, mse_train, mse_test, pls = train_plsr(ncomp=ncomp, X_train=X_train, y_train=y_train, X_test=X_test, y_test=y_test)
 
             rmse_sum += np.sqrt(mse_test)
-            # mae_sum += mean_absolute_error(y_test, pls.predict(X_test))
-            # r2_sum += r2_score(y_test, pls.predict(X_test))
 
-        # Calculate the average RMSE, MAE, and R2 for the current number of components
+        # Calculate the average RMSE for the current number of components
         avg_rmse = rmse_sum / X.shape[0]
-        # avg_mae = mae_sum / X.shape[0]
-        # avg_r2 = r2_sum / X.shape[0]
+
+        # Calculate the normalized average RMSE
+        normalized_avg_rmse = avg_rmse / y_range
 
         result_dict[ncomp] = {
             'zones': 'Full',
             'number_of_components': ncomp,
             'rmse_avg': avg_rmse,
-            # 'mae_avg': avg_mae,
-            # 'r2_avg': avg_r2
+            'normalized_rmse_avg': normalized_avg_rmse
         }
 
         # Update the optimal number of components if we find a better one
