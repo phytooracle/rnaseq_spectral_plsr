@@ -20,9 +20,10 @@ from scipy.signal import savgol_filter
 from sklearn.cross_decomposition import PLSRegression
 from sklearn.model_selection import cross_val_predict
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_squared_error
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from sklearn.utils import shuffle
 from sklearn.model_selection import permutation_test_score
+from sklearn.model_selection import LeaveOneOut
 from scipy.signal import savgol_filter
 import matplotlib.collections as collections
 import pickle
@@ -134,7 +135,7 @@ def get_args():
                         help='Maximum number of tests',
                         metavar='int',
                         type=int,
-                        default=30)
+                        default=10) #30)
 
     parser.add_argument('-np',
                         '--number_permutations',
@@ -431,110 +432,220 @@ def get_spectral_zone_combined_wavelength_dataframe(yaml_dict, combinations_list
 
 #     return result_df.reset_index(), selected_components, selected_zone, combo_df
 # --------------------------------------------------
-def find_optimal_number_components(X, y, transcript): #(X_train, y_train, X_test, y_test, transcript):
+# def find_optimal_number_components(X, y, transcript): #(X_train, y_train, X_test, y_test, transcript):
 
-    args = get_args()
-    # Run PLSR
-    result_dict = {}
-    cnt = 0
+#     args = get_args()
+#     # Run PLSR
+#     result_dict = {}
+#     cnt = 0
 
-    # Add for loop here
-    combinations_list, yaml_dict = get_spectral_zone_combinations(yaml_path=args.yaml_path)
-    combo_df = get_spectral_zone_combined_wavelength_dataframe(yaml_dict=yaml_dict, combinations_list=combinations_list) 
+#     # Add for loop here
+#     combinations_list, yaml_dict = get_spectral_zone_combinations(yaml_path=args.yaml_path)
+#     combo_df = get_spectral_zone_combined_wavelength_dataframe(yaml_dict=yaml_dict, combinations_list=combinations_list) 
 
-    X_filtered = X
-    # X_filtered = variance_threshold_variable_selection(data=X_filtered, y=y, threshold=args.variance_threshold, transcript=transcript)
-    print(f'[INFO] Processing zones: Full')
-    print(f'[INFO] Variables selected: {len(X_filtered.columns)}')
+#     X_filtered = X
+#     # X_filtered = variance_threshold_variable_selection(data=X_filtered, y=y, threshold=args.variance_threshold, transcript=transcript)
+#     print(f'[INFO] Processing zones: Full')
+#     print(f'[INFO] Variables selected: {len(X_filtered.columns)}')
     
 
-    # Created raw(train & test), selected(traing & test)
-    X_train, X_test, y_train, y_test = train_test_split(X_filtered, y, random_state=args.random_number_seed, test_size=args.test_size)
+#     # Created raw(train & test), selected(traing & test)
+#     X_train, X_test, y_train, y_test = train_test_split(X_filtered, y, random_state=args.random_number_seed, test_size=args.test_size)
 
-    iter_range = range(1, args.onc_max_tests+1)
+#     iter_range = range(1, args.onc_max_tests+1)
 
-    if max(iter_range) > len(X_filtered.columns):
-        iter_range = range(1, len(X_filtered.columns)+1)
+#     if max(iter_range) > len(X_filtered.columns):
+#         iter_range = range(1, len(X_filtered.columns)+1)
 
-    for i in iter_range:
-        cnt += 1
-        score_train, score_test, mse_train, mse_test, model = train_plsr(ncomp=i, 
-                                                                X_train=X_train, 
-                                                                y_train=y_train,
-                                                                X_test=X_test, 
-                                                                y_test=y_test)
-        if args.number_permutations > 0:
+#     for i in iter_range:
+#         cnt += 1
+#         score_train, score_test, mse_train, mse_test, model = train_plsr(ncomp=i, 
+#                                                                 X_train=X_train, 
+#                                                                 y_train=y_train,
+#                                                                 X_test=X_test, 
+#                                                                 y_test=y_test)
+#         if args.number_permutations > 0:
 
-            mean_permutation_score, mean_permutation_mse, mean_permutation_rmse = run_permutation_test(X_test=X_test, y_test=y_test, model=model)
+#             mean_permutation_score, mean_permutation_mse, mean_permutation_rmse = run_permutation_test(X_test=X_test, y_test=y_test, model=model)
 
-            result_dict[cnt] = {
-                'zones': 'Full',
-                'number_of_components': int(i),
+#             result_dict[cnt] = {
+#                 'zones': 'Full',
+#                 'number_of_components': int(i),
 
-                'score_train_test_delta': abs(score_train - score_test),
-                'score_train': score_train,
-                'score_test': score_test,
-                'score_test_mean_permutation': mean_permutation_score,
+#                 'score_train_test_delta': abs(score_train - score_test),
+#                 'score_train': score_train,
+#                 'score_test': score_test,
+#                 'score_test_mean_permutation': mean_permutation_score,
 
-                'rmse_train_test_delta': abs(np.sqrt(mse_train) - np.sqrt(mse_test)),
-                'rmse_train': np.sqrt(mse_train),
-                'rmse_test': np.sqrt(mse_test),
-                'rmse_test_mean_permutation': mean_permutation_rmse,
+#                 'rmse_train_test_delta': abs(np.sqrt(mse_train) - np.sqrt(mse_test)),
+#                 'rmse_train': np.sqrt(mse_train),
+#                 'rmse_test': np.sqrt(mse_test),
+#                 'rmse_test_mean_permutation': mean_permutation_rmse,
 
-                'mse_train_test_delta': abs(mse_train - mse_test),
-                'mse_train': mse_train, 
-                'mse_test': mse_test,
-                'mse_test_mean_permutation': mean_permutation_mse
-            }
+#                 'mse_train_test_delta': abs(mse_train - mse_test),
+#                 'mse_train': mse_train, 
+#                 'mse_test': mse_test,
+#                 'mse_test_mean_permutation': mean_permutation_mse
+#             }
 
-        else: 
+#         else: 
 
-            result_dict[cnt] = {
-                'zones': 'Full',
-                'number_of_components': int(i),
+#             result_dict[cnt] = {
+#                 'zones': 'Full',
+#                 'number_of_components': int(i),
 
-                'score_train_test_delta': abs(score_train - score_test),
-                'score_train': score_train,
-                'score_test': score_test,
-                # 'score_test_mean_permutation': mean_permutation_score,
+#                 'score_train_test_delta': abs(score_train - score_test),
+#                 'score_train': score_train,
+#                 'score_test': score_test,
+#                 # 'score_test_mean_permutation': mean_permutation_score,
 
-                'rmse_train_test_delta': abs(np.sqrt(mse_train) - np.sqrt(mse_test)),
-                'rmse_train': np.sqrt(mse_train),
-                'rmse_test': np.sqrt(mse_test),
-                # 'rmse_test_mean_permutation': mean_permutation_rmse,
+#                 'rmse_train_test_delta': abs(np.sqrt(mse_train) - np.sqrt(mse_test)),
+#                 'rmse_train': np.sqrt(mse_train),
+#                 'rmse_test': np.sqrt(mse_test),
+#                 # 'rmse_test_mean_permutation': mean_permutation_rmse,
 
-                'mse_train_test_delta': abs(mse_train - mse_test),
-                'mse_train': mse_train, 
-                'mse_test': mse_test,
-                # 'mse_test_mean_permutation': mean_permutation_mse
-            }
+#                 'mse_train_test_delta': abs(mse_train - mse_test),
+#                 'mse_train': mse_train, 
+#                 'mse_test': mse_test,
+#                 # 'mse_test_mean_permutation': mean_permutation_mse
+#             }
+
+#         if args.save_all_models:
+
+#             if not os.path.isdir(os.path.join(model_out_dir, zones_output)):
+#                 os.makedirs(os.path.join(model_out_dir, zones_output))
+
+#             save_plsr_model(filename=os.path.join(model_out_dir, zones_output, '.'.join(['_'.join([transcript, str(i)]), "pkl"])), model=model)
+
+#     result_df = pd.DataFrame.from_dict(result_dict, orient='index').sort_values('rmse_train_test_delta')
+#     selected_components = int(result_df.iloc[0]['number_of_components'])  
+#     selected_zone = result_df.iloc[0]['zones']
+#     zones_output = '_'.join(selected_zone.split(' '))
+
+#     result_df['transcript'] = transcript
+#     result_df = result_df.set_index(['zones', 'number_of_components'])
+#     result_df['selected'] = False
+#     result_df.at[(selected_zone, selected_components), 'selected'] = True
+
+#     if not os.path.isdir(os.path.join(csv_out_dir, zones_output)):
+#         os.makedirs(os.path.join(csv_out_dir, zones_output))
+        
+#     result_df[result_df['selected']==True].to_csv(os.path.join(csv_out_dir, zones_output, '.'.join(['_'.join([transcript, 'selected']), 'csv'])), index=True)
+
+#     return result_df.reset_index(), selected_components, selected_zone, combo_df
+
+# def find_optimal_number_components(X, y, transcript):
+#     args = get_args()
+#     result_dict = {}
+    
+#     optimal_components = None
+#     min_rmse = float('inf')
+#     combinations_list, yaml_dict = get_spectral_zone_combinations(yaml_path=args.yaml_path)
+#     combo_df = get_spectral_zone_combined_wavelength_dataframe(yaml_dict=yaml_dict, combinations_list=combinations_list) 
+#     # Iterate over possible numbers of components
+#     for ncomp in range(1, args.onc_max_tests + 1):
+#         rmse_sum = 0.0
+        
+#         # Iterate over each sample and leave it out for testing
+#         for i in range(X.shape[0]):
+#             X_train = np.delete(X, i, axis=0)
+#             y_train = np.delete(y, i)
+#             X_test = X[i:i+1]  # Use only one sample for testing
+#             y_test = y[i:i+1]
+            
+#             score_train, score_test, mse_train, mse_test, pls = train_plsr(ncomp=ncomp, X_train=X_train, y_train=y_train, X_test=X_test, y_test=y_test)
+#             rmse_sum += np.sqrt(mse_test)
+
+#         # Calculate the average RMSE for the current number of components
+#         avg_rmse = rmse_sum / X.shape[0]
+#         result_dict[ncomp] = {
+#             'zones': 'Full',
+#             'number_of_components': ncomp,
+#             'rmse_avg': avg_rmse
+#         }
+
+#         # Update the optimal number of components if we find a better one
+#         if avg_rmse < min_rmse:
+#             min_rmse = avg_rmse
+#             optimal_components = ncomp
+
+#     result_df = pd.DataFrame.from_dict(result_dict, orient='index').sort_values('rmse_avg')
+#     selected_zone = result_df.iloc[0]['zones']
+#     zones_output = '_'.join(selected_zone.split(' '))
+
+#     result_df['transcript'] = transcript
+#     result_df = result_df.set_index(['zones', 'number_of_components'])
+#     result_df['selected'] = False
+#     result_df.at[(selected_zone, optimal_components), 'selected'] = True
+
+#     if not os.path.isdir(os.path.join(csv_out_dir, zones_output)):
+#         os.makedirs(os.path.join(csv_out_dir, zones_output))
+
+#     result_df[result_df['selected'] == True].to_csv(os.path.join(csv_out_dir, zones_output, '.'.join(['_'.join([transcript, 'selected']), 'csv'])), index=True)
+
+#     return result_df.reset_index(), optimal_components, selected_zone, combo_df
 
 
+def find_optimal_number_components(X, y, transcript):
+    args = get_args()
+    result_dict = {}
+    
+    optimal_components = None
+    min_rmse = float('inf')
+    combinations_list, yaml_dict = get_spectral_zone_combinations(yaml_path=args.yaml_path)
+    combo_df = get_spectral_zone_combined_wavelength_dataframe(yaml_dict=yaml_dict, combinations_list=combinations_list) 
+    # Iterate over possible numbers of components
+    for ncomp in range(2, args.onc_max_tests + 1):
+        rmse_sum = 0.0
+        mae_sum = 0.0
+        r2_sum = 0.0
+        
+        # Iterate over each sample and leave it out for testing
+        for i in range(X.shape[0]):
+            X_train = np.delete(X, i, axis=0)
+            y_train = np.delete(y, i)
+            X_test = X[i:i+1]  # Use only one sample for testing
+            y_test = y[i:i+1].values[0]
 
-        if args.save_all_models:
+            score_train, score_test, mse_train, mse_test, pls = train_plsr(ncomp=ncomp, X_train=X_train, y_train=y_train, X_test=X_test, y_test=y_test)
 
-            if not os.path.isdir(os.path.join(model_out_dir, zones_output)):
-                os.makedirs(os.path.join(model_out_dir, zones_output))
+            rmse_sum += np.sqrt(mse_test)
+            # mae_sum += mean_absolute_error(y_test, pls.predict(X_test))
+            # r2_sum += r2_score(y_test, pls.predict(X_test))
 
-            save_plsr_model(filename=os.path.join(model_out_dir, zones_output, '.'.join(['_'.join([transcript, str(i)]), "pkl"])), model=model)
+        # Calculate the average RMSE, MAE, and R2 for the current number of components
+        avg_rmse = rmse_sum / X.shape[0]
+        # avg_mae = mae_sum / X.shape[0]
+        # avg_r2 = r2_sum / X.shape[0]
 
-    result_df = pd.DataFrame.from_dict(result_dict, orient='index').sort_values('rmse_train_test_delta')
-    selected_components = int(result_df.iloc[0]['number_of_components'])  
+        result_dict[ncomp] = {
+            'zones': 'Full',
+            'number_of_components': ncomp,
+            'rmse_avg': avg_rmse,
+            # 'mae_avg': avg_mae,
+            # 'r2_avg': avg_r2
+        }
+
+        # Update the optimal number of components if we find a better one
+        if avg_rmse < min_rmse:
+            min_rmse = avg_rmse
+            optimal_components = ncomp
+
+    result_df = pd.DataFrame.from_dict(result_dict, orient='index').sort_values('rmse_avg')
     selected_zone = result_df.iloc[0]['zones']
     zones_output = '_'.join(selected_zone.split(' '))
 
-    result_df['transcript'] = transcript
+    result_df['transcript'] = transcript.replace('Gh_', 'Gohir.')
     result_df = result_df.set_index(['zones', 'number_of_components'])
     result_df['selected'] = False
-    result_df.at[(selected_zone, selected_components), 'selected'] = True
+    result_df.at[(selected_zone, optimal_components), 'selected'] = True
 
     if not os.path.isdir(os.path.join(csv_out_dir, zones_output)):
         os.makedirs(os.path.join(csv_out_dir, zones_output))
-        
-    result_df[result_df['selected']==True].to_csv(os.path.join(csv_out_dir, zones_output, '.'.join(['_'.join([transcript, 'selected']), 'csv'])), index=True)
 
-    return result_df.reset_index(), selected_components, selected_zone, combo_df
+    result_df[result_df['selected'] == True].to_csv(os.path.join(csv_out_dir, zones_output, '.'.join(['_'.join([transcript, 'selected']), 'csv'])), index=True)
 
+    return result_df.reset_index(), optimal_components, selected_zone, combo_df
 
 # --------------------------------------------------
 def variance_threshold_variable_selection(data, y, threshold, transcript):
@@ -815,8 +926,8 @@ def plsr_component_optimization(df, transcript, rng):
         full_df.append(df)
 
         # Generate & save plots
-        create_delta_figure(df=df, transcript=transcript, combo_df=combo_df, n_comp=n_comp, selected_zone=selected_zone, tag='first_derivative' if spectra=="First Derivative Spectra" else "raw")
-        create_score_figure(df=df, transcript=transcript, combo_df=combo_df, n_comp=n_comp, selected_zone=selected_zone, tag='first_derivative' if spectra=="First Derivative Spectra" else "raw")
+        # create_delta_figure(df=df, transcript=transcript, combo_df=combo_df, n_comp=n_comp, selected_zone=selected_zone, tag='first_derivative' if spectra=="First Derivative Spectra" else "raw")
+        # create_score_figure(df=df, transcript=transcript, combo_df=combo_df, n_comp=n_comp, selected_zone=selected_zone, tag='first_derivative' if spectra=="First Derivative Spectra" else "raw")
 
     full_df = pd.concat(full_df)
     full_df.to_csv(os.path.join(csv_out_dir, '.'.join(['_'.join([transcript, args.onc_file_name]), 'csv'])), index=False)
