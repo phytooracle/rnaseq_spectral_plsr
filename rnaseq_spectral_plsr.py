@@ -135,7 +135,7 @@ def get_args():
                         help='Maximum number of tests',
                         metavar='int',
                         type=int,
-                        default=10) #30)
+                        default=30)
 
     parser.add_argument('-np',
                         '--number_permutations',
@@ -729,7 +729,7 @@ def find_optimal_number_components(X, y, transcript):
             X_train = np.delete(X, i, axis=0)
             y_train = np.delete(y, i)
             X_test = X[i:i+1]  # Use only one sample for testing
-            y_test = y[i:i+1].values[0]
+            y_test = y[i:i+1]#.values[0]
 
             score_train, score_test, mse_train, mse_test, pls = train_plsr(ncomp=ncomp, X_train=X_train, y_train=y_train, X_test=X_test, y_test=y_test)
 
