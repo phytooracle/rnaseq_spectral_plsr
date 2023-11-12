@@ -22,8 +22,7 @@ from sklearn.model_selection import cross_val_predict
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from sklearn.utils import shuffle
-from sklearn.model_selection import permutation_test_score
-from sklearn.model_selection import LeaveOneOut
+from sklearn.model_selection import permutation_test_score, LeaveOneOut, cross_val_score
 from scipy.signal import savgol_filter
 import matplotlib.collections as collections
 import pickle
@@ -34,8 +33,7 @@ import pickle
 from sklearn.preprocessing import StandardScaler
 from sklearn.feature_selection import VarianceThreshold#, f_regression, mutual_info_regression, SelectFdr
 from statistics import mean
-
-
+from math import sqrt
 
 
 # --------------------------------------------------
@@ -719,39 +717,50 @@ def find_optimal_number_components(X, y, transcript):
     # Calculate the range of the target variable
     y_range = np.max(y) - np.min(y)
 
+    # Convert DataFrame to numpy array
+    X = X.values
+    y = y.values.ravel()  # Use ravel() to convert it to a 1D array
+
+    # Create a LeaveOneOut object
+    loo = LeaveOneOut()
+
     # Iterate over possible numbers of components
     for ncomp in range(2, args.onc_max_tests + 1):
-        rmse_sum = 0.0
+        # Train the PLSR model
+        pls = PLSRegression(n_components=ncomp)
+
+        y_pred = []
         rmse_list = []
-        
-        # Iterate over each sample and leave it out for testing
-        for i in range(X.shape[0]):
-            X_train = np.delete(X, i, axis=0)
-            y_train = np.delete(y, i)
-            X_test = X[i:i+1]  # Use only one sample for testing
-            y_test = y[i:i+1]#.values[0]
+        # Perform LOOCV
+        for train_index, test_index in loo.split(X):
+            X_train, X_test = X[train_index], X[test_index]
+            y_train, y_test = y[train_index], y[test_index]
 
-            score_train, score_test, mse_train, mse_test, pls = train_plsr(ncomp=ncomp, X_train=X_train, y_train=y_train, X_test=X_test, y_test=y_test)
+            # Train the PLSR model
+            pls.fit(X_train, y_train)
 
-            rmse = np.sqrt(mse_test)
-            rmse_sum += rmse
-            rmse_list.append(rmse)
+            # Predict the test sample and calculate the RMSE
+            y_pred_test = pls.predict(X_test)[0]
+            y_pred.append(y_pred_test)
+            rmse_list.append(sqrt(mean_squared_error(y_test, y_pred_test)))
 
-        # Calculate the average RMSE for the current number of components
-        avg_rmse = rmse_sum / X.shape[0]
-
-        # Calculate the average CV(RMSE) for the current number of components
-        cv_rmse = np.std(rmse_list, ddof=1) / np.mean(rmse_list) if np.mean(rmse_list) else 0
+        # Calculate the average RMSE
+        avg_rmse = np.mean(rmse_list)
 
         # Calculate the normalized average RMSE
         normalized_avg_rmse = avg_rmse / y_range
 
+        # Calculate R-squared score
+        r2 = r2_score(y, y_pred)
+
         result_dict[ncomp] = {
             'zones': 'Full',
             'number_of_components': ncomp,
-            'rmse_avg': avg_rmse,
-            'cv_rmse_avg': cv_rmse,
-            'normalized_rmse_avg': normalized_avg_rmse
+            # 'rmse_avg': avg_rmse,
+            # 'normalized_rmse_avg': normalized_avg_rmse,
+            'rmse': avg_rmse,
+            'nrmse': normalized_avg_rmse,
+            'r2_score': r2
         }
 
         # Update the optimal number of components if we find a better one
@@ -759,7 +768,7 @@ def find_optimal_number_components(X, y, transcript):
             min_rmse = avg_rmse
             optimal_components = ncomp
 
-    result_df = pd.DataFrame.from_dict(result_dict, orient='index').sort_values('rmse_avg')
+    result_df = pd.DataFrame.from_dict(result_dict, orient='index').sort_values('rmse')
     selected_zone = result_df.iloc[0]['zones']
     zones_output = '_'.join(selected_zone.split(' '))
 
@@ -770,10 +779,11 @@ def find_optimal_number_components(X, y, transcript):
 
     if not os.path.isdir(os.path.join(csv_out_dir, zones_output)):
         os.makedirs(os.path.join(csv_out_dir, zones_output))
-
+    
     result_df[result_df['selected'] == True].to_csv(os.path.join(csv_out_dir, zones_output, '.'.join(['_'.join([transcript, 'selected']), 'csv'])), index=True)
 
     return result_df.reset_index(), optimal_components, selected_zone, combo_df
+
 
 
 # --------------------------------------------------
