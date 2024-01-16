@@ -717,6 +717,9 @@ def find_optimal_number_components(X, y, transcript):
     # Calculate the range of the target variable
     y_range = np.max(y) - np.min(y)
 
+    #Calculate the mean of the target variable
+    y_mean = np.mean(y)
+
     # Convert DataFrame to numpy array
     X = X.values
     y = y.values.ravel()  # Use ravel() to convert it to a 1D array
@@ -748,7 +751,7 @@ def find_optimal_number_components(X, y, transcript):
         avg_rmse = np.mean(rmse_list)
 
         # Calculate the normalized average RMSE
-        normalized_avg_rmse = avg_rmse / y_range
+        normalized_avg_rmse = (avg_rmse/y_mean)*100 #y_range
 
         # Calculate R-squared score
         r2 = r2_score(y, y_pred)
