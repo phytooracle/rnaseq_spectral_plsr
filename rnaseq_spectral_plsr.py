@@ -34,6 +34,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.feature_selection import VarianceThreshold#, f_regression, mutual_info_regression, SelectFdr
 from statistics import mean
 from math import sqrt
+import vegspec as vs
 
 
 # --------------------------------------------------
@@ -749,6 +750,7 @@ def find_optimal_number_components(X, y, transcript):
 
         # Calculate the normalized average RMSE
         normalized_avg_rmse = avg_rmse / y_range
+        normalized_avg_rmse = normalized_avg_rmse.item()
 
         # Calculate R-squared score
         r2 = r2_score(y, y_pred)
@@ -1035,7 +1037,41 @@ def get_derivative(X):
 #     # save_plsr_model(filename=os.path.join(model_out_dir, '.'.join(['_'.join([transcript, 'final']), "pkl"])), model=model)
 #     # print(f'[RESULT] Train R2:{final_score_train}\n[RESULT] Test R2: {final_score_test}')
 
-    
+def calculate_vegetation_indices(df_wav):
+
+    # Get wavelength list
+    wl = [int(col_name) for col_name in df_wav.columns]
+
+    # Create empty list to store results
+    result_list = []
+
+    # Iterate over all rows, calculate vegetation indices for each
+    for i, row in df_wav.iterrows():
+        
+        # Create a list of the spectrum
+        rf = row.tolist()
+
+        # Calculated vegetataion indices using VegSpec
+        spectrum = vs.VegSpec(wl,rf)
+
+        # Create a dataframe of the results
+        result = pd.DataFrame.from_dict(spectrum.indices, orient='index').T
+
+        # Add the original index as a column
+        result['original_index'] = i
+        
+        # Add result to results list
+        result_list.append(result)
+
+    # Convert result_list into a single DataFrame
+    result_df = pd.concat(result_list)
+
+    # Reset the index of result_df
+    result_df.reset_index(drop=True, inplace=True)
+
+
+    return result_df
+
 def plsr_component_optimization(df, transcript, rng):
 
     args = get_args()
@@ -1046,30 +1082,16 @@ def plsr_component_optimization(df, transcript, rng):
     # Prepare explanatory/independent & response/dependent variables
     y = df[[transcript]]
     X = df[[str(i) for i in range(args.min_wavelength, args.max_wavelength+1)]]
+    X = calculate_vegetation_indices(df_wav=X)
 
-    # Calculate derivatives, scale data, and apply variance threshold
-    first_deriv, second_deriv = get_derivative(X)
-    full_df = []
+    # Find optimal number of PLSR components & save result CSV
+    df, n_comp, selected_zone, combo_df = find_optimal_number_components(X=X, y=y, transcript=transcript) #(X_train, y_train, X_test, y_test, transcript=transcript)
+    print(f'[RESULT] Optimal spectral zones: {selected_zone}')
+    print(f'[RESULT] Optimal number of components: {n_comp}')
+    # full_df.append(df)
 
-    for use_first_deriv, spectra in zip([False, True], ["Reflectance Spectra", "First Derivative Spectra"]):
-        if use_first_deriv:
-            X = pd.DataFrame(first_deriv, columns = X.columns)
-        print('[INFO] Scaling data using StandardScaler.')
-        # X = scale_data(X)
-        
-        # Find optimal number of PLSR components & save result CSV
-        df, n_comp, selected_zone, combo_df = find_optimal_number_components(X=X, y=y, transcript=transcript) #(X_train, y_train, X_test, y_test, transcript=transcript)
-        df["spectra"] = spectra
-        print(f'[RESULT] Optimal spectral zones: {selected_zone}')
-        print(f'[RESULT] Optimal number of components: {n_comp}')
-        full_df.append(df)
-
-        # Generate & save plots
-        # create_delta_figure(df=df, transcript=transcript, combo_df=combo_df, n_comp=n_comp, selected_zone=selected_zone, tag='first_derivative' if spectra=="First Derivative Spectra" else "raw")
-        # create_score_figure(df=df, transcript=transcript, combo_df=combo_df, n_comp=n_comp, selected_zone=selected_zone, tag='first_derivative' if spectra=="First Derivative Spectra" else "raw")
-
-    full_df = pd.concat(full_df)
-    full_df.to_csv(os.path.join(csv_out_dir, '.'.join(['_'.join([transcript, args.onc_file_name]), 'csv'])), index=False)
+    # full_df = pd.concat(full_df)
+    df.to_csv(os.path.join(csv_out_dir, '.'.join(['_'.join([transcript, args.onc_file_name]), 'csv'])), index=False)
 
 
 # --------------------------------------------------
