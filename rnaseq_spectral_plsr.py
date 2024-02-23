@@ -784,10 +784,13 @@ def find_optimal_number_components(X, y, transcript):
 
     if not os.path.isdir(os.path.join(csv_out_dir, zones_output)):
         os.makedirs(os.path.join(csv_out_dir, zones_output))
+
+    if not os.path.isdir(os.path.join(model_out_dir, zones_output)):
+        os.makedirs(os.path.join(model_out_dir, zones_output))
     
     result_df[result_df['selected'] == True].to_csv(os.path.join(csv_out_dir, zones_output, '.'.join(['_'.join([transcript, 'selected']), 'csv'])), index=True)
     ### ADDED
-    save_plsr_model(os.path.join(csv_out_dir, zones_output, 'optimal_model.pkl'), optimal_model)
+    save_plsr_model(os.path.join(model_out_dir, zones_output, 'optimal_model.pkl'), optimal_model)
     ###
     return result_df.reset_index(), optimal_components, selected_zone, combo_df
 
