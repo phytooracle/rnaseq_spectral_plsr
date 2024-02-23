@@ -769,6 +769,9 @@ def find_optimal_number_components(X, y, transcript):
         if avg_rmse < min_rmse:
             min_rmse = avg_rmse
             optimal_components = ncomp
+            ### ADDED
+            optimal_model = pls
+            ###
 
     result_df = pd.DataFrame.from_dict(result_dict, orient='index').sort_values('rmse')
     selected_zone = result_df.iloc[0]['zones']
@@ -783,7 +786,9 @@ def find_optimal_number_components(X, y, transcript):
         os.makedirs(os.path.join(csv_out_dir, zones_output))
     
     result_df[result_df['selected'] == True].to_csv(os.path.join(csv_out_dir, zones_output, '.'.join(['_'.join([transcript, 'selected']), 'csv'])), index=True)
-
+    ### ADDED
+    save_plsr_model(os.path.join(csv_out_dir, zones_output, 'optimal_model.pkl'), optimal_model)
+    ###
     return result_df.reset_index(), optimal_components, selected_zone, combo_df
 
 
