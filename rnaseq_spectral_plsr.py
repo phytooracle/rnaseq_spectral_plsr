@@ -1092,6 +1092,7 @@ def plsr_component_optimization(df, transcript, rng):
     y = df[[transcript]]
     X = df[[str(i) for i in range(args.min_wavelength, args.max_wavelength+1)]]
     X = calculate_vegetation_indices(df_wav=X)
+    X = X.drop('original_index', axis=1)
 
     # Find optimal number of PLSR components & save result CSV
     df, n_comp, selected_zone, combo_df = find_optimal_number_components(X=X, y=y, transcript=transcript) #(X_train, y_train, X_test, y_test, transcript=transcript)
